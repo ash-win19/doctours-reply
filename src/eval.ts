@@ -3,13 +3,12 @@ import { parseArgs } from "node:util";
 import { parseMessages } from "./cli.ts";
 import { defaultRunnerDeps, log } from "./deps.ts";
 import { ReplySchema } from "./reply.ts";
-import { MODES, runMessages, type Mode } from "./runner.ts";
+import { parseMode, runMessages } from "./runner.ts";
 
 // Runs the packet's five messages and checks the output contract plus each expected escalate value.
 // The expectations stay here and never reach the model.
 const { values } = parseArgs({ options: { mode: { type: "string", default: "baseline" } } });
-const mode = values.mode as Mode;
-if (!MODES.includes(mode)) throw new Error(`--mode must be one of: ${MODES.join(", ")}`);
+const mode = parseMode(values.mode);
 
 const messages = parseMessages(readFileSync("fixtures/packet-messages.json", "utf8"));
 const expectedEscalate: Record<string, boolean> = JSON.parse(

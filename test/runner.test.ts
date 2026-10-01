@@ -103,3 +103,26 @@ test("a setup error fails the whole run instead of escalating", async () => {
     /ANTHROPIC_API_KEY/,
   );
 });
+
+test("after a setup error no new messages start", async () => {
+  let calls = 0;
+  const create: CreateMessage = async () => {
+    calls += 1;
+    if (calls === 1) throw new SetupError("bad key");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return message([toolUse("submitReply", VALID_REPLY)]);
+  };
+  await assert.rejects(runMessages(inputs, "baseline", { ...setup(), create, responderModel: "fake" }), /bad key/);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(calls, MAX_CONCURRENCY);
+});
+
+test("a failed message's trace keeps its model calls", async () => {
+  const deps = setup();
+  const create: CreateMessage = async () => message([{ type: "text", text: "no tools", citations: null } as Anthropic.TextBlock]);
+  await runMessages(inputs.slice(0, 1), "baseline", { ...deps, create, responderModel: "fake" });
+  const [runId] = readdirSync(deps.traceRoot);
+  const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));
+  assert.equal(trace.modelCalls.length, 1);
+  assert.match(trace.error, /without calling a tool/);
+});

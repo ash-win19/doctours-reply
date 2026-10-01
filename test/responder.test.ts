@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
-import { respondBaseline, MAX_TOOL_ROUNDS } from "../src/responder.ts";
+import { respondBaseline, MAX_TOOL_ROUNDS, ResponderError } from "../src/responder.ts";
 import { VALID_REPLY, scriptedModel, toolUse } from "./fakes.ts";
 
 const options = { model: "fake-model" };
@@ -71,7 +71,13 @@ test(`forces submitReply after ${MAX_TOOL_ROUNDS} tool rounds`, async () => {
 test("throws when the model never submits a valid Reply", async () => {
   const lookups = Array.from({ length: 20 }, () => [toolUse("getAllClinicsTool", {})]);
   const model = scriptedModel(lookups);
-  await assert.rejects(respondBaseline("hi", { ...options, create: model.create }), /submit/i);
+  await assert.rejects(respondBaseline("hi", { ...options, create: model.create }), (error: unknown) => {
+    assert.ok(error instanceof ResponderError);
+    assert.match(error.message, /submit/i);
+    assert.equal(error.trace.modelCalls.length, 10);
+    assert.equal(error.trace.toolCalls.length, 10);
+    return true;
+  });
 });
 
 test("traces usage and latency for every model call", async () => {

@@ -1,12 +1,19 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Reply } from "./reply.ts";
-import { respondBaseline, type CreateMessage, type ResponderTrace } from "./responder.ts";
+import { ResponderError, respondBaseline, type CreateMessage, type ResponderTrace } from "./responder.ts";
 
 export const MAX_CONCURRENCY = 4;
 
 export const MODES = ["baseline"] as const;
 export type Mode = (typeof MODES)[number];
+
+export function parseMode(value: string | undefined): Mode {
+  if (!MODES.includes(value as Mode)) {
+    throw new Error(`--mode must be one of: ${MODES.join(", ")}`);
+  }
+  return value as Mode;
+}
 
 export interface HumanMessage {
   id: string;
@@ -25,7 +32,7 @@ export class SetupError extends Error {}
 
 // Every message still gets exactly one Reply when drafting fails, so a person takes over.
 const DRAFTING_FAILED_REPLY: Reply = {
-  response: "I'm getting a person for you.",
+  response: "I can't answer this one myself. I'm getting a person for you.",
   escalate: true,
   escalationReason: "Failed to draft a reply",
   templateId: null,
@@ -48,11 +55,13 @@ function traceFileNames(messages: HumanMessage[]): string[] {
 }
 
 export async function runMessages(messages: HumanMessage[], mode: Mode, deps: RunnerDeps): Promise<Reply[]> {
+  // An ISO timestamp with ":" swapped for "-" so it works as a directory name everywhere.
   const runId = new Date().toISOString().replaceAll(":", "-");
   const traceDir = join(deps.traceRoot, runId);
   mkdirSync(traceDir, { recursive: true });
   const fileNames = traceFileNames(messages);
   const replies: Reply[] = new Array(messages.length);
+  let setupFailed = false;
 
   async function runOne(index: number): Promise<void> {
     const input = messages[index];
@@ -63,7 +72,11 @@ export async function runMessages(messages: HumanMessage[], mode: Mode, deps: Ru
     try {
       ({ reply, trace } = await respondBaseline(input.text, { create: deps.create, model: deps.responderModel }));
     } catch (caught) {
-      if (caught instanceof SetupError) throw caught;
+      if (caught instanceof SetupError) {
+        setupFailed = true;
+        throw caught;
+      }
+      if (caught instanceof ResponderError) trace = caught.trace;
       error = caught instanceof Error ? caught.message : String(caught);
       reply = DRAFTING_FAILED_REPLY;
     }
@@ -80,7 +93,7 @@ export async function runMessages(messages: HumanMessage[], mode: Mode, deps: Ru
 
   let next = 0;
   async function worker(): Promise<void> {
-    while (next < messages.length) {
+    while (next < messages.length && !setupFailed) {
       await runOne(next++);
     }
   }

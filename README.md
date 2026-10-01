@@ -18,9 +18,11 @@ npm run respond -- --mode baseline messages.json > replies.json
 - Up to 4 messages run at once.
 - Each message writes a trace to `traces/<runId>/<messageId>.json`. A trace holds the input, the filled prompts, every tool call and result, the final model output, and tokens and latency for each model call.
 
-`RESPONDER_MODEL` sets the model and defaults to `claude-sonnet-5`.
+`RESPONDER_MODEL` sets the model and defaults to `claude-sonnet-5`. `TRIAGE_MODEL` defaults to `claude-haiku-4-5-20251001` and is unused until a mode with triage lands.
 
-If a message can't be drafted, its Reply escalates ("I'm getting a person for you."), so every message still gets exactly one Reply. Setup problems such as a missing or rejected key or an unknown model stop the whole run with a non-zero exit instead.
+The run ID is the run's start time as an ISO timestamp, with `:` swapped for `-` so it works as a directory name.
+
+If a message can't be drafted, its Reply escalates ("I can't answer this one myself. I'm getting a person for you."), so every message still gets exactly one Reply. Setup problems such as a missing or rejected key or an unknown model stop the whole run with a non-zero exit instead.
 
 ## Modes
 

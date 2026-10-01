@@ -3,6 +3,9 @@ import { SetupError, type RunnerDeps } from "./runner.ts";
 
 export const log = (line: string) => process.stderr.write(`${line}\n`);
 
+// Read now so the setting is in one place. Baseline mode has no triage step, so nothing uses it yet.
+export const TRIAGE_MODEL = process.env.TRIAGE_MODEL ?? "claude-haiku-4-5-20251001";
+
 export function defaultRunnerDeps(): RunnerDeps {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new SetupError("Set ANTHROPIC_API_KEY before running");

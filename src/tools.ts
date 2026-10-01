@@ -62,7 +62,7 @@ const SPECS: Record<string, ToolSpec<z.ZodType>> = {
   }),
   getPaymentLinkTool: spec({
     description:
-      'A trusted deposit link. type "payment" takes a clinicPackageId; type "checkout" takes a clinicId.',
+      'A trusted Payment link (type "payment", takes clinicPackageId) or Checkout link (type "checkout", takes clinicId).',
     input: z.object({
       clinicPackageId: z.string().optional(),
       type: z.string().optional(),
@@ -110,15 +110,13 @@ function toInputSchema(schema: z.ZodType): Anthropic.Tool.InputSchema {
   return jsonSchema as Anthropic.Tool.InputSchema;
 }
 
-export const TOOLS: Anthropic.Tool[] = Object.entries(SPECS).map(([name, toolSpec]) => ({
-  name,
-  description: toolSpec.description,
-  input_schema: toInputSchema(toolSpec.input),
-}));
-
 export function toolDefinition(name: string, description: string, input: z.ZodType): Anthropic.Tool {
   return { name, description, input_schema: toInputSchema(input) };
 }
+
+export const TOOLS: Anthropic.Tool[] = Object.entries(SPECS).map(([name, toolSpec]) =>
+  toolDefinition(name, toolSpec.description, toolSpec.input),
+);
 
 export type ToolRun = { isError: false; output: unknown } | { isError: true; output: string };
 

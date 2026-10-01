@@ -40,6 +40,16 @@ export interface ResponderTrace {
   finalOutput: unknown;
 }
 
+// Carries the partial trace so a failed message's model and tool calls still get written.
+export class ResponderError extends Error {
+  constructor(
+    message: string,
+    readonly trace: ResponderTrace,
+  ) {
+    super(message);
+  }
+}
+
 const submitReplyTool = toolDefinition(
   SUBMIT_REPLY,
   "Submit the final Reply to the patient's message. Call this exactly once, after any lookups, to finish the turn.",
@@ -96,20 +106,20 @@ export async function respondBaseline(
         });
         continue;
       }
-      const run = runTool(toolUse.name, toolUse.input);
-      trace.toolCalls.push({ name: toolUse.name, input: toolUse.input, output: run.output, isError: run.isError });
+      const toolResult = runTool(toolUse.name, toolUse.input);
+      trace.toolCalls.push({ name: toolUse.name, input: toolUse.input, output: toolResult.output, isError: toolResult.isError });
       results.push({
         type: "tool_result",
         tool_use_id: toolUse.id,
-        is_error: run.isError || undefined,
-        content: typeof run.output === "string" ? run.output : JSON.stringify(run.output),
+        is_error: toolResult.isError || undefined,
+        content: typeof toolResult.output === "string" ? toolResult.output : JSON.stringify(toolResult.output),
       });
     }
     if (results.length === 0) {
-      throw new Error(`Model stopped without calling a tool (stop reason: ${response.stop_reason})`);
+      throw new ResponderError(`Model stopped without calling a tool (stop reason: ${response.stop_reason})`, trace);
     }
     messages.push({ role: "user", content: results });
   }
 
-  throw new Error(`Model did not submit a valid Reply within ${MAX_MODEL_CALLS} calls`);
+  throw new ResponderError(`Model did not submit a valid Reply within ${MAX_MODEL_CALLS} calls`, trace);
 }

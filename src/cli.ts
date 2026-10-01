@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defaultRunnerDeps, log } from "./deps.ts";
-import { MODES, runMessages, type HumanMessage, type Mode } from "./runner.ts";
+import { parseMode, runMessages, type HumanMessage, type Mode } from "./runner.ts";
 
 const MessagesSchema = z.array(z.object({ id: z.string(), text: z.string() }));
 
@@ -19,14 +19,11 @@ export function parseCliArgs(argv: string[]): CliArgs {
     options: { mode: { type: "string" }, out: { type: "string" } },
     allowPositionals: true,
   });
-  const mode = values.mode;
-  if (!MODES.includes(mode as Mode)) {
-    throw new Error(`--mode must be one of: ${MODES.join(", ")}`);
-  }
+  const mode = parseMode(values.mode);
   if (positionals.length > 1) {
     throw new Error("Pass at most one input file");
   }
-  return { mode: mode as Mode, out: values.out, inputPath: positionals[0] };
+  return { mode, out: values.out, inputPath: positionals[0] };
 }
 
 export function parseMessages(raw: string): HumanMessage[] {
@@ -45,6 +42,9 @@ export function parseMessages(raw: string): HumanMessage[] {
 
 async function main(): Promise<void> {
   const args = parseCliArgs(process.argv.slice(2));
+  if (!args.inputPath && process.stdin.isTTY) {
+    throw new Error("Pass a messages file or pipe the messages into stdin");
+  }
   const raw = args.inputPath ? readFileSync(args.inputPath, "utf8") : readFileSync(process.stdin.fd, "utf8");
   const messages = parseMessages(raw);
   const replies = await runMessages(messages, args.mode, defaultRunnerDeps());
