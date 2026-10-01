@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Content, GenerateContentParameters } from "@google/genai";
-import { runMessages, MAX_CONCURRENCY, SetupError, isDraftingFailure } from "../src/runner.ts";
+import { runMessages, MAX_CONCURRENCY, SetupError } from "../src/runner.ts";
 import { ReplySchema } from "../src/reply.ts";
 import type { GenerateContent } from "../src/responder.ts";
 import { VALID_REPLY, generation, functionCall } from "./fakes.ts";
@@ -37,7 +37,8 @@ const inputs = Array.from({ length: 10 }, (_, index) => ({ id: `m${index}`, text
 
 test("returns one Reply per message, in input order", async () => {
   const model = echoModel((text) => 50 - Number(text.match(/\d+/)![0]) * 4);
-  const replies = await runMessages(inputs, "baseline", { ...setup(), generate: model.generate, responderModel: "fake" });
+  const { results } = await runMessages(inputs, "baseline", { ...setup(), generate: model.generate, responderModel: "fake" });
+  const replies = results.map((result) => result.reply);
   assert.deepEqual(
     replies.map((reply) => reply.response),
     inputs.map((input) => `"${input.text}"`),
@@ -53,8 +54,13 @@ test(`runs at most ${MAX_CONCURRENCY} messages at once`, async () => {
 test("writes one trace file per message", async () => {
   const deps = setup();
   const model = echoModel(() => 1);
-  await runMessages(inputs.slice(0, 2), "baseline", { ...deps, generate: model.generate, responderModel: "fake" });
+  const output = await runMessages(inputs.slice(0, 2), "baseline", { ...deps, generate: model.generate, responderModel: "fake" });
   const [runId] = readdirSync(deps.traceRoot);
+  assert.equal(output.runId, runId);
+  assert.deepEqual(output.results[0].input, inputs[0]);
+  assert.equal(output.results[0].trace!.modelCalls.length, 1);
+  assert.equal(output.results[0].error, null);
+  assert.equal(typeof output.results[0].wallTimeMs, "number");
   assert.match(runId, /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z$/);
   const files = readdirSync(join(deps.traceRoot, runId)).sort();
   assert.deepEqual(files, ["m0.json", "m1.json"]);
@@ -84,12 +90,13 @@ test("a message that fails still gets a schema-valid escalation Reply", async ()
   const generate: GenerateContent = async () => {
     throw new Error("API down");
   };
-  const replies = await runMessages(inputs.slice(0, 1), "baseline", { ...deps, generate, responderModel: "fake" });
+  const { results } = await runMessages(inputs.slice(0, 1), "baseline", { ...deps, generate, responderModel: "fake" });
+  const replies = results.map((result) => result.reply);
+  assert.match(results[0].error!, /API down/);
   assert.equal(replies.length, 1);
   assert.ok(ReplySchema.safeParse(replies[0]).success);
   assert.equal(replies[0].escalate, true);
   assert.equal(replies[0].templateId, null);
-  assert.ok(isDraftingFailure(replies[0]));
   const [runId] = readdirSync(deps.traceRoot);
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));
   assert.match(trace.error, /API down/);
@@ -126,12 +133,4 @@ test("a failed message's trace keeps its model calls", async () => {
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));
   assert.equal(trace.modelCalls.length, 1);
   assert.match(trace.error, /without calling a tool/);
-});
-
-test("a Reply the model wrote is not a drafting failure, even when it escalates", async () => {
-  const generate: GenerateContent = async () =>
-    generation([functionCall("submitReply", { ...VALID_REPLY, escalate: true, escalationReason: "Asked for a person" })]);
-  const [reply] = await runMessages(inputs.slice(0, 1), "baseline", { ...setup(), generate, responderModel: "fake" });
-  assert.equal(reply.escalate, true);
-  assert.equal(isDraftingFailure(reply), false);
 });

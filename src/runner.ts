@@ -44,11 +44,6 @@ const DRAFTING_FAILED_REPLY: Reply = {
   workingMemoryUpdates: null,
 };
 
-// True when the Reply is the fallback for a message the model never finished, not one it wrote.
-export function isDraftingFailure(reply: Reply): boolean {
-  return reply === DRAFTING_FAILED_REPLY;
-}
-
 function traceFileNames(messages: HumanMessage[]): string[] {
   const used = new Map<string, number>();
   return messages.map(({ id }) => {
@@ -59,13 +54,26 @@ function traceFileNames(messages: HumanMessage[]): string[] {
   });
 }
 
-export async function runMessages(messages: HumanMessage[], mode: Mode, deps: RunnerDeps): Promise<Reply[]> {
+export interface MessageResult {
+  input: HumanMessage;
+  reply: Reply;
+  trace: ResponderTrace | null;
+  error: string | null;
+  wallTimeMs: number;
+}
+
+export interface RunOutput {
+  runId: string;
+  results: MessageResult[];
+}
+
+export async function runMessages(messages: HumanMessage[], mode: Mode, deps: RunnerDeps): Promise<RunOutput> {
   // An ISO timestamp with ":" swapped for "-" so it works as a directory name everywhere.
   const runId = new Date().toISOString().replaceAll(":", "-");
   const traceDir = join(deps.traceRoot, runId);
   mkdirSync(traceDir, { recursive: true });
   const fileNames = traceFileNames(messages);
-  const replies: Reply[] = new Array(messages.length);
+  const results: MessageResult[] = new Array(messages.length);
   let setupFailed = false;
 
   async function runOne(index: number): Promise<void> {
@@ -86,7 +94,7 @@ export async function runMessages(messages: HumanMessage[], mode: Mode, deps: Ru
       reply = DRAFTING_FAILED_REPLY;
     }
     const wallTimeMs = Math.round(performance.now() - started);
-    replies[index] = reply;
+    results[index] = { input, reply, trace, error, wallTimeMs };
     writeFileSync(
       join(traceDir, fileNames[index]),
       JSON.stringify({ input, mode, ...trace, reply, error, wallTimeMs }, null, 2),
@@ -105,5 +113,5 @@ export async function runMessages(messages: HumanMessage[], mode: Mode, deps: Ru
   await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENCY, messages.length) }, worker));
 
   deps.log(`Wrote traces to ${traceDir}`);
-  return replies;
+  return { runId, results };
 }

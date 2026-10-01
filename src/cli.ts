@@ -47,7 +47,8 @@ async function main(): Promise<void> {
   }
   const raw = args.inputPath ? readFileSync(args.inputPath, "utf8") : readFileSync(process.stdin.fd, "utf8");
   const messages = parseMessages(raw);
-  const replies = await runMessages(messages, args.mode, defaultRunnerDeps());
+  const { results } = await runMessages(messages, args.mode, defaultRunnerDeps());
+  const replies = results.map((result) => result.reply);
   const output = `${JSON.stringify(replies, null, 2)}\n`;
   if (args.out) {
     writeFileSync(args.out, output);

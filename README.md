@@ -45,7 +45,31 @@ If a message can't be drafted, its Reply escalates ("I can't answer this one mys
 ```sh
 npm test            # unit tests, no API key needed
 npm run typecheck
-npm run eval        # runs the packet's five messages through the real model
+npm run eval        # runs every eval case through the real model
 ```
 
-`npm run eval` checks that the five packet messages produce five schema-valid Replies with the expected `escalate` values. A message the model never finished counts as a failure, even though its fallback Reply escalates. The expected values stay in `fixtures/` and never reach the model.
+### Evals
+
+`npm run eval -- --mode <mode>` runs the cases in `evals/cases/` through the same runner the CLI uses, scores each Reply, and prints a scorecard to stderr: pass or fail per case with the failing check, the pass rate per group, total input and output tokens, and the median latency per message. Output tokens include Gemini's thinking tokens. A message the model never finished fails as `drafted`, even if its fallback Reply happens to match.
+
+- `--cases <name>` runs one case file, such as `--cases packet-check`. Repeat it for more.
+- Every run saves its scorecard to `evals/results/<runId>.json`, with the same run ID as its traces.
+- `npm run eval -- --compare <runA> <runB>` prints the two runs side by side, plus the cases that were fixed or broke. A run is named by its run ID or by a results file path.
+
+A case is one Patient message plus deterministic checks:
+
+```json
+{
+  "id": "consultation",
+  "group": "consultation",
+  "rule": "Packet, Expected outputs: consultation must say it is free and include the consultation URL.",
+  "text": "Is the consultation free?",
+  "expect": { "escalate": false, "includes": ["free"], "lastLineUrl": "https://www.doctours.com/consultation" }
+}
+```
+
+`group` is the skill the case exercises, or `escalation`. `rule` cites the source rule it tests. The checks are `escalate` (exact match), `includes` and `excludes` (substrings, ignoring case), `lastLineUrl` (the response's last line is exactly that URL), `noUrl`, `maxSentences` (split on `.`, `?` and `!` after removing URLs) and `maxAttachments`. An unknown check name is rejected, so a typo can't pass silently.
+
+`evals/cases/packet-check.json` holds the packet's five messages and only the checks the packet says must match. Nothing outside the eval harness reads it. A unit test fails if any source file or prompt mentions it.
+
+Result files stay out of git, except the baseline one cited below.
