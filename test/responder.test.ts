@@ -1,104 +1,108 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type Groq from "groq-sdk";
-import { respondBaseline, MAX_TOOL_ROUNDS, ResponderError, type CompletionParams } from "../src/responder.ts";
-import { VALID_REPLY, scriptedModel, toolCall } from "./fakes.ts";
+import { FunctionCallingConfigMode, type Content, type FunctionDeclaration, type GenerateContentParameters } from "@google/genai";
+import { respondBaseline, MAX_TOOL_ROUNDS, ResponderError } from "../src/responder.ts";
+import { VALID_REPLY, scriptedModel, functionCall } from "./fakes.ts";
 
 const options = { model: "fake-model" };
 
-type ToolMessage = Groq.Chat.ChatCompletionToolMessageParam;
+function contents(request: GenerateContentParameters): Content[] {
+  return request.contents as Content[];
+}
 
-function toolMessages(request: CompletionParams): ToolMessage[] {
-  return request.messages.filter((message): message is ToolMessage => message.role === "tool");
+function declarations(request: GenerateContentParameters): FunctionDeclaration[] {
+  return request.config!.tools!.flatMap((tool) => ("functionDeclarations" in tool ? tool.functionDeclarations ?? [] : []));
+}
+
+function functionResponses(request: GenerateContentParameters) {
+  return contents(request).flatMap((content) => content.parts ?? []).flatMap((part) => part.functionResponse ?? []);
 }
 
 test("returns the Reply the model submits", async () => {
-  const model = scriptedModel([[toolCall("submitReply", VALID_REPLY)]]);
-  const { reply } = await respondBaseline("Is the consultation free?", { ...options, create: model.create });
+  const model = scriptedModel([[functionCall("submitReply", VALID_REPLY)]]);
+  const { reply } = await respondBaseline("Is the consultation free?", { ...options, generate: model.generate });
   assert.deepEqual(reply, VALID_REPLY);
 });
 
 test("sends the filled system prompt, the user message and every tool", async () => {
-  const model = scriptedModel([[toolCall("submitReply", VALID_REPLY)]]);
-  await respondBaseline("Is the consultation free?", { ...options, create: model.create });
+  const model = scriptedModel([[functionCall("submitReply", VALID_REPLY)]]);
+  await respondBaseline("Is the consultation free?", { ...options, generate: model.generate });
   const [request] = model.requests;
-  const [system, user] = request.messages;
-  assert.equal(system.role, "system");
-  assert.match(system.content as string, /^# IDENTITY/);
-  assert.equal(user.role, "user");
-  assert.match(user.content as string, /"Is the consultation free\?"/);
   assert.equal(request.model, "fake-model");
-  assert.equal(request.tools?.length, 15);
-  assert.ok(request.tools?.some((tool) => tool.function?.name === "submitReply"));
-  assert.equal(request.tool_choice, "required");
+  assert.match(request.config!.systemInstruction as string, /^# IDENTITY/);
+  const [user] = contents(request);
+  assert.equal(user.role, "user");
+  assert.match(user.parts![0].text!, /"Is the consultation free\?"/);
+  const names = declarations(request).map((declaration) => declaration.name);
+  assert.equal(names.length, 15);
+  assert.ok(names.includes("submitReply"));
+  assert.deepEqual(request.config!.toolConfig, {
+    functionCallingConfig: { mode: FunctionCallingConfigMode.ANY },
+  });
 });
 
 test("runs tools and feeds results back until the Reply is submitted", async () => {
   const model = scriptedModel([
-    [toolCall("getClinicPackagesTool", { clinicName: "Dr. Hakan Clinic" })],
-    [toolCall("submitReply", VALID_REPLY)],
+    [functionCall("getClinicPackagesTool", { clinicName: "Dr. Hakan Clinic" })],
+    [functionCall("submitReply", VALID_REPLY)],
   ]);
   const { reply, trace } = await respondBaseline("What does Dr. Hakan Clinic cost?", {
     ...options,
-    create: model.create,
+    generate: model.generate,
   });
   assert.deepEqual(reply, VALID_REPLY);
-  const [result] = toolMessages(model.requests[1]);
-  const assistant = model.requests[1].messages.find((message) => message.role === "assistant")!;
-  assert.equal(result.tool_call_id, (assistant as Groq.Chat.ChatCompletionAssistantMessageParam).tool_calls![0].id);
-  assert.match(result.content as string, /Sapphire/);
+  const modelTurn = contents(model.requests[1])[1];
+  const call = modelTurn.parts!.find((part) => part.functionCall)!.functionCall!;
+  const [result] = functionResponses(model.requests[1]);
+  assert.equal(result.id, call.id);
+  assert.equal(result.name, "getClinicPackagesTool");
+  assert.match(JSON.stringify(result.response), /Sapphire/);
   assert.equal(trace.toolCalls.length, 1);
   assert.equal(trace.toolCalls[0].name, "getClinicPackagesTool");
   assert.match(JSON.stringify(trace.toolCalls[0].output), /Sapphire/);
 });
 
-test("sends the model's reasoning back with its tool calls", async () => {
-  const model = scriptedModel([[toolCall("getAllClinicsTool", {})], [toolCall("submitReply", VALID_REPLY)]]);
-  await respondBaseline("hi", { ...options, create: model.create });
-  const assistant = model.requests[1].messages.find((message) => message.role === "assistant");
-  assert.equal((assistant as { reasoning?: string }).reasoning, "thinking it over");
+test("sends the model's turn back unchanged, thought signatures included", async () => {
+  const model = scriptedModel([[functionCall("getAllClinicsTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
+  await respondBaseline("hi", { ...options, generate: model.generate });
+  const modelTurn = contents(model.requests[1])[1];
+  assert.equal(modelTurn.role, "model");
+  assert.equal(modelTurn.parts![0].thoughtSignature, "signature");
 });
 
 test("always sets templateId to null", async () => {
-  const model = scriptedModel([[toolCall("submitReply", { ...VALID_REPLY, templateId: "tpl_1" })]]);
-  const { reply } = await respondBaseline("hi", { ...options, create: model.create });
+  const model = scriptedModel([[functionCall("submitReply", { ...VALID_REPLY, templateId: "tpl_1" })]]);
+  const { reply } = await respondBaseline("hi", { ...options, generate: model.generate });
   assert.equal(reply.templateId, null);
 });
 
 test("an invalid Reply goes back to the model as an error", async () => {
   const model = scriptedModel([
-    [toolCall("submitReply", { ...VALID_REPLY, escalate: "no" })],
-    [toolCall("submitReply", VALID_REPLY)],
+    [functionCall("submitReply", { ...VALID_REPLY, escalate: "no" })],
+    [functionCall("submitReply", VALID_REPLY)],
   ]);
-  const { reply } = await respondBaseline("hi", { ...options, create: model.create });
+  const { reply } = await respondBaseline("hi", { ...options, generate: model.generate });
   assert.deepEqual(reply, VALID_REPLY);
-  const [result] = toolMessages(model.requests[1]);
-  assert.match(result.content as string, /does not match the schema/);
-});
-
-test("tool arguments that are not JSON go back to the model as an error", async () => {
-  const model = scriptedModel([
-    [{ name: "getClinicPackagesTool", arguments: "{clinicName: Heva" }],
-    [toolCall("submitReply", VALID_REPLY)],
-  ]);
-  const { trace } = await respondBaseline("hi", { ...options, create: model.create });
-  const [result] = toolMessages(model.requests[1]);
-  assert.match(result.content as string, /not valid JSON/);
-  assert.equal(trace.toolCalls[0].isError, true);
+  const [result] = functionResponses(model.requests[1]);
+  assert.match(JSON.stringify(result.response), /does not match the schema/);
 });
 
 test(`forces submitReply after ${MAX_TOOL_ROUNDS} tool rounds`, async () => {
-  const lookups = Array.from({ length: MAX_TOOL_ROUNDS }, () => [toolCall("getAllClinicsTool", {})]);
-  const model = scriptedModel([...lookups, [toolCall("submitReply", VALID_REPLY)]]);
-  await respondBaseline("hi", { ...options, create: model.create });
-  assert.deepEqual(model.requests.at(-1)!.tool_choice, { type: "function", function: { name: "submitReply" } });
-  assert.equal(model.requests.at(-2)!.tool_choice, "required");
+  const lookups = Array.from({ length: MAX_TOOL_ROUNDS }, () => [functionCall("getAllClinicsTool", {})]);
+  const model = scriptedModel([...lookups, [functionCall("submitReply", VALID_REPLY)]]);
+  await respondBaseline("hi", { ...options, generate: model.generate });
+  assert.deepEqual(model.requests.at(-1)!.config!.toolConfig, {
+    functionCallingConfig: { mode: FunctionCallingConfigMode.ANY, allowedFunctionNames: ["submitReply"] },
+  });
+  assert.deepEqual(model.requests.at(-2)!.config!.toolConfig, {
+    functionCallingConfig: { mode: FunctionCallingConfigMode.ANY },
+  });
 });
 
 test("throws with the partial trace when the model never submits a valid Reply", async () => {
-  const lookups = Array.from({ length: 20 }, () => [toolCall("getAllClinicsTool", {})]);
+  const lookups = Array.from({ length: 20 }, () => [functionCall("getAllClinicsTool", {})]);
   const model = scriptedModel(lookups);
-  await assert.rejects(respondBaseline("hi", { ...options, create: model.create }), (error: unknown) => {
+  await assert.rejects(respondBaseline("hi", { ...options, generate: model.generate }), (error: unknown) => {
     assert.ok(error instanceof ResponderError);
     assert.match(error.message, /submit/i);
     assert.equal(error.trace.modelCalls.length, 10);
@@ -108,15 +112,15 @@ test("throws with the partial trace when the model never submits a valid Reply",
 });
 
 test("traces usage and latency for every model call", async () => {
-  const model = scriptedModel([[toolCall("getAllClinicsTool", {})], [toolCall("submitReply", VALID_REPLY)]]);
-  const { trace } = await respondBaseline("hi", { ...options, create: model.create });
+  const model = scriptedModel([[functionCall("getAllClinicsTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
+  const { trace } = await respondBaseline("hi", { ...options, generate: model.generate });
   assert.equal(trace.modelCalls.length, 2);
   for (const call of trace.modelCalls) {
     assert.equal(call.model, "fake-model");
-    assert.equal(call.usage?.prompt_tokens, 100);
-    assert.equal(call.usage?.prompt_tokens_details?.cached_tokens, 80);
+    assert.equal(call.usage?.promptTokenCount, 100);
+    assert.equal(call.usage?.cachedContentTokenCount, 80);
+    assert.equal(call.usage?.thoughtsTokenCount, 30);
     assert.equal(typeof call.latencyMs, "number");
   }
-  assert.equal(trace.modelCalls[0].reasoning, "thinking it over");
   assert.deepEqual(trace.finalOutput, VALID_REPLY);
 });

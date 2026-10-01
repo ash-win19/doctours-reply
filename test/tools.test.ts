@@ -4,7 +4,7 @@ import { TOOLS, runTool } from "../src/tools.ts";
 
 test("exposes the 14 packet functions under the prompt's names", () => {
   assert.deepEqual(
-    TOOLS.map((tool) => tool.function.name).sort(),
+    TOOLS.map((tool) => tool.name).sort(),
     [
       "getAllClinicsTool",
       "getClinicDoctorsTool",
@@ -24,10 +24,9 @@ test("exposes the 14 packet functions under the prompt's names", () => {
   );
 });
 
-test("every tool is a function with an object parameters schema", () => {
+test("every tool has an object JSON Schema for its parameters", () => {
   for (const tool of TOOLS) {
-    assert.equal(tool.type, "function", tool.function.name);
-    assert.equal(tool.function.parameters?.type, "object", tool.function.name);
+    assert.equal((tool.parametersJsonSchema as { type: string }).type, "object", tool.name);
   }
 });
 

@@ -1,4 +1,4 @@
-import type Groq from "groq-sdk";
+import type { FunctionDeclaration } from "@google/genai";
 import { z } from "zod";
 import * as packet from "./packet-tools.ts";
 
@@ -105,18 +105,16 @@ const SPECS: Record<string, ToolSpec<z.ZodType>> = {
   }),
 };
 
-function toParameters(schema: z.ZodType): Record<string, unknown> {
+function toParametersSchema(schema: z.ZodType): Record<string, unknown> {
   const { $schema: _ignored, ...jsonSchema } = z.toJSONSchema(schema) as Record<string, unknown>;
   return jsonSchema;
 }
 
-export type FunctionTool = Groq.Chat.ChatCompletionTool & { type: "function"; function: Groq.FunctionDefinition };
-
-export function toolDefinition(name: string, description: string, input: z.ZodType): FunctionTool {
-  return { type: "function", function: { name, description, parameters: toParameters(input) } };
+export function toolDefinition(name: string, description: string, input: z.ZodType): FunctionDeclaration {
+  return { name, description, parametersJsonSchema: toParametersSchema(input) };
 }
 
-export const TOOLS: FunctionTool[] = Object.entries(SPECS).map(([name, toolSpec]) =>
+export const TOOLS: FunctionDeclaration[] = Object.entries(SPECS).map(([name, toolSpec]) =>
   toolDefinition(name, toolSpec.description, toolSpec.input),
 );
 

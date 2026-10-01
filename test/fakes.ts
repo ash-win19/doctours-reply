@@ -1,5 +1,5 @@
-import type Groq from "groq-sdk";
-import type { CreateCompletion, CompletionParams } from "../src/responder.ts";
+import { GenerateContentResponse, type GenerateContentParameters } from "@google/genai";
+import type { GenerateContent } from "../src/responder.ts";
 import type { Reply } from "../src/reply.ts";
 
 export const VALID_REPLY: Reply = {
@@ -17,58 +17,52 @@ export const VALID_REPLY: Reply = {
 
 let nextId = 0;
 
-export interface FakeToolCall {
+export interface FakeFunctionCall {
   name: string;
-  arguments: string;
+  args: Record<string, unknown>;
 }
 
-export function toolCall(name: string, input: unknown): FakeToolCall {
-  return { name, arguments: JSON.stringify(input) };
+export function functionCall(name: string, args: object): FakeFunctionCall {
+  return { name, args: args as Record<string, unknown> };
 }
 
-// Builds the completion a model returns when it calls the given tools, or answers in text when there are none.
-export function completion(calls: FakeToolCall[], text: string | null = null): Groq.Chat.ChatCompletion {
-  nextId += 1;
-  return {
-    id: `chatcmpl_${nextId}`,
-    object: "chat.completion",
-    created: 0,
-    model: "fake-model",
-    choices: [
-      {
-        index: 0,
-        finish_reason: calls.length ? "tool_calls" : "stop",
-        logprobs: null,
-        message: {
-          role: "assistant",
-          content: text,
-          reasoning: "thinking it over",
-          tool_calls: calls.map((call) => ({
-            id: `call_${++nextId}`,
-            type: "function" as const,
-            function: { name: call.name, arguments: call.arguments },
+// Builds the response a model returns when it calls the given functions, or answers in text when there are none.
+export function generation(calls: FakeFunctionCall[], text?: string): GenerateContentResponse {
+  const response = new GenerateContentResponse();
+  response.modelVersion = "fake-model";
+  response.candidates = [
+    {
+      finishReason: "STOP" as never,
+      content: {
+        role: "model",
+        parts: [
+          ...(text ? [{ text }] : []),
+          ...calls.map((call, index) => ({
+            functionCall: { id: `call_${++nextId}`, name: call.name, args: call.args },
+            ...(index === 0 ? { thoughtSignature: "signature" } : {}),
           })),
-        },
+        ],
       },
-    ],
-    usage: {
-      prompt_tokens: 100,
-      completion_tokens: 20,
-      total_tokens: 120,
-      prompt_tokens_details: { cached_tokens: 80 },
-      total_time: 0.2,
     },
-  } as Groq.Chat.ChatCompletion;
+  ];
+  response.usageMetadata = {
+    promptTokenCount: 100,
+    candidatesTokenCount: 20,
+    cachedContentTokenCount: 80,
+    thoughtsTokenCount: 30,
+    totalTokenCount: 150,
+  };
+  return response;
 }
 
 // Replays the given turns in order and records every request it receives.
-export function scriptedModel(turns: FakeToolCall[][]) {
-  const requests: CompletionParams[] = [];
-  const create: CreateCompletion = async (params) => {
+export function scriptedModel(turns: FakeFunctionCall[][]) {
+  const requests: GenerateContentParameters[] = [];
+  const generate: GenerateContent = async (params) => {
     requests.push(structuredClone(params));
     const turn = turns[requests.length - 1];
     if (!turn) throw new Error("Scripted model ran out of turns");
-    return completion(turn);
+    return generation(turn);
   };
-  return { create, requests };
+  return { generate, requests };
 }
