@@ -18,6 +18,8 @@ npm run respond -- --mode baseline messages.json > replies.json
 - Up to 4 messages run at once.
 - Each message writes a trace to `traces/<runId>/<messageId>.json`. A trace holds the input, the filled prompts, every tool call and result, the final model output, and the model's reasoning, tokens (including cached tokens) and latency for each model call.
 
+The baseline prompt is about 22k tokens, and Groq counts each request's prompt plus its 4,096-token output budget against your tokens-per-minute limit. Groq's free tier allows 8,000 tokens per minute on `openai/gpt-oss-120b`, so baseline mode needs a paid Groq tier. A request that exceeds the limit stops the run with Groq's error. Ordinary rate limits (429) are retried with backoff.
+
 `RESPONDER_MODEL` sets the Groq model and defaults to `openai/gpt-oss-120b`. `TRIAGE_MODEL` defaults to `openai/gpt-oss-20b` and is unused until a mode with triage lands.
 
 The run ID is the run's start time as an ISO timestamp, with `:` swapped for `-` so it works as a directory name.

@@ -86,7 +86,8 @@ export async function respondBaseline(
     const started = performance.now();
     const completion = await create({
       model,
-      max_completion_tokens: 16000,
+      // Groq counts this budget against the tokens-per-minute limit, so keep it near what a Reply needs.
+      max_completion_tokens: 4096,
       tools: [...TOOLS, submitReplyTool],
       tool_choice: toolChoice,
       messages,
