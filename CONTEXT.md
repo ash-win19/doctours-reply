@@ -47,12 +47,12 @@ Where a pre-deposit Patient sits in the sales pipeline, such as LEAD, PREP_PRE_C
 _Avoid_: stage, funnel step
 
 **Assessment**:
-The medical team's preliminary plan for a Patient, holding the graft range, hairline drawing and Recommended clinics.
+The medical team's preliminary plan for a Patient, holding the graft range, hairline drawing and Matched clinics.
 _Avoid_: report, evaluation, quote
 
-**Recommended clinics**:
+**Matched clinics**:
 The clinics the Assessment matched to a Patient.
-_Avoid_: saved clinics, assessment clinic recommendations
+_Avoid_: recommended clinics, saved clinics, assessment clinic recommendations
 
 **Selected clinic**:
 The one clinic a Patient has chosen or is leaning toward.
@@ -67,6 +67,10 @@ The free phone call between a Patient and Doctours' team, never with the clinic 
 _Avoid_: surgeon call, video call, meeting
 
 ### Clinics and packages
+
+**Clinic status**:
+Whether a clinic may be offered to a Patient, set to recommended, limited or do_not_recommend.
+_Avoid_: rating, offer level
 
 **Package**:
 A clinic's priced bundle of the procedure plus included extras such as hotel nights.
@@ -105,7 +109,8 @@ _Avoid_: financing
 ## Relationships
 
 - A **Patient** talks to exactly one **Coordinator**. After an **Escalation**, an **Operator** types as that Coordinator.
-- An **Assessment** produces zero or more **Recommended clinics**. A **Selected clinic** may come from outside them.
+- An **Assessment** produces zero or more **Matched clinics**. A **Selected clinic** may come from outside them.
+- A **Clinic status** governs offering a clinic, never whether it exists. A Matched clinic and a clinic with status recommended are different things.
 - A **Payment link** belongs to one **Package**. A **Checkout link** belongs to one clinic.
 - A **Deposit** comes before the **Remaining balance**. **Financing** and **Layaway** only ever cover the Remaining balance.
 
@@ -114,3 +119,4 @@ _Avoid_: financing
 - The source prompt used "tier" for both the journey phase and Package levels. **Tier** now means the journey phase only.
 - The source data labels the Coordinator's messages `OPERATOR`. In this glossary, **Operator** means only the staff member who takes over after an Escalation.
 - "Deposit link" could mean either link. Use **Payment link** or **Checkout link**.
+- "Recommended" used to mean both the Assessment's matches and a Clinic status value. Matches are now **Matched clinics**, and "recommended" is only a **Clinic status** value.
