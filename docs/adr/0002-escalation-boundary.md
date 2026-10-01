@@ -13,6 +13,7 @@ Escalate:
 - opting out of messages, because a person has to flag the account
 - complaints that threaten a report or legal action
 - a second request for a clinic's phone, email or WhatsApp
+- the system itself failing to draft a Reply after retries, so every message still gets exactly one Reply
 
 Answer:
 - a Payment link or Checkout link request

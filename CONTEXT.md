@@ -32,8 +32,12 @@ _Avoid_: handoff, routing, transfer
 One of the three things collected before an Assessment can be built: procedure area, name, photos.
 _Avoid_: collection field, required info
 
+**Follow-up**:
+A message the Coordinator sends later without the Patient writing first.
+_Avoid_: check-in, reminder, nudge
+
 **Time-bound pause**:
-A Reply to a Patient who is stepping back from the next decision, promising a dated check-in.
+A Reply to a Patient who is stepping back from the next decision, promising a dated Follow-up.
 _Avoid_: open-ended pause
 
 ### Journey
@@ -119,4 +123,5 @@ _Avoid_: financing
 - The source prompt used "tier" for both the journey phase and Package levels. **Tier** now means the journey phase only.
 - The source data labels the Coordinator's messages `OPERATOR`. In this glossary, **Operator** means only the staff member who takes over after an Escalation.
 - "Deposit link" could mean either link. Use **Payment link** or **Checkout link**.
+- The source prompt said "check-in", "follow-up" and "reminder" for the same thing. Use **Follow-up**. "Check in" stays as Patient-facing wording only.
 - "Recommended" used to mean both the Assessment's matches and a Clinic status value. Matches are now **Matched clinics**, and "recommended" is only a **Clinic status** value.
