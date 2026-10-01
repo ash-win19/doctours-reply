@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadScorecard, parseEvalArgs, saveScorecard } from "../src/eval/results.ts";
+import { parseEvalArgs } from "../src/eval.ts";
+import { loadScorecard, saveScorecard } from "../src/eval/results.ts";
 import type { Scorecard } from "../src/eval/scorecard.ts";
 
 const card: Scorecard = {

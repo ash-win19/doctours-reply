@@ -1,32 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseArgs } from "node:util";
-import { parseMode, type Mode } from "../runner.ts";
 import type { Scorecard } from "./scorecard.ts";
 
 export const RESULTS_DIR = "evals/results";
-
-export type EvalArgs =
-  | { kind: "run"; mode: Mode; caseFiles: string[] }
-  | { kind: "compare"; before: string; after: string };
-
-export function parseEvalArgs(argv: string[]): EvalArgs {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    options: {
-      mode: { type: "string", default: "baseline" },
-      cases: { type: "string", multiple: true, default: [] },
-      compare: { type: "boolean", default: false },
-    },
-    allowPositionals: true,
-  });
-  if (values.compare) {
-    if (positionals.length !== 2) throw new Error("--compare takes two runs: --compare <runA> <runB>");
-    return { kind: "compare", before: positionals[0], after: positionals[1] };
-  }
-  if (positionals.length > 0) throw new Error(`Unexpected argument: ${positionals[0]}`);
-  return { kind: "run", mode: parseMode(values.mode), caseFiles: values.cases };
-}
 
 export function saveScorecard(card: Scorecard, dir = RESULTS_DIR): string {
   mkdirSync(dir, { recursive: true });

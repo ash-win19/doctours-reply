@@ -45,6 +45,17 @@ export interface ResponderTrace {
   finalOutput: unknown;
 }
 
+// Gemini reports thinking separately from the visible output. Both are billed as output.
+export function tokenUsage(trace: ResponderTrace | null): { inputTokens: number; outputTokens: number } {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for (const { usage } of trace?.modelCalls ?? []) {
+    inputTokens += usage?.promptTokenCount ?? 0;
+    outputTokens += (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0);
+  }
+  return { inputTokens, outputTokens };
+}
+
 // Carries the partial trace so a failed message's model and tool calls still get written.
 export class ResponderError extends Error {
   constructor(

@@ -10,7 +10,9 @@ import {
   checkMaxAttachments,
   checkMaxSentences,
   checkNoUrl,
+  checkReply,
   type CheckResult,
+  type NamedCheck,
 } from "./checks.ts";
 
 export const CASES_DIR = "evals/cases";
@@ -18,7 +20,7 @@ export const CASES_DIR = "evals/cases";
 const ExpectSchema = z
   .object({
     escalate: z.boolean().optional(),
-    includes: z.array(z.string()).optional(),
+    includes: z.array(z.union([z.string(), z.array(z.string()).min(1)])).optional(),
     excludes: z.array(z.string()).optional(),
     lastLineUrl: z.string().optional(),
     noUrl: z.boolean().optional(),
@@ -36,7 +38,7 @@ const EvalCaseSchema = z
     rule: z.string().min(1),
     text: z.string(),
     // Patient context overrides. The runner can't swap context in yet, so a case that sets it is rejected.
-    context: z.never({ error: "context is not supported until the runner can swap patient context" }).optional(),
+    context: z.never({ error: "context is not supported until the runner can swap Patient context" }).optional(),
     expect: ExpectSchema,
   })
   .strict();
@@ -83,13 +85,9 @@ export function loadCases(names: string[] = []): EvalCase[] {
   return loadCaseFiles(fileNames.map((file) => ({ path: file, raw: readFileSync(join(CASES_DIR, file), "utf8") })));
 }
 
-export interface CheckOutcome extends CheckResult {
-  name: keyof Expect;
-}
-
 export interface CaseOutcome {
   passed: boolean;
-  checks: CheckOutcome[];
+  checks: NamedCheck[];
 }
 
 const CHECKS: { [Name in keyof Expect]-?: (reply: Reply, expected: NonNullable<Expect[Name]>) => CheckResult | null } = {
@@ -102,8 +100,9 @@ const CHECKS: { [Name in keyof Expect]-?: (reply: Reply, expected: NonNullable<E
   maxAttachments: checkMaxAttachments,
 };
 
+// Every Reply must match the schema with a null templateId, whatever the case expects.
 export function scoreCase(evalCase: EvalCase, reply: Reply): CaseOutcome {
-  const checks: CheckOutcome[] = [];
+  const checks: NamedCheck[] = [{ name: "reply", ...checkReply(reply) }];
   for (const name of Object.keys(CHECKS) as (keyof Expect)[]) {
     const expected = evalCase.expect[name];
     if (expected === undefined) continue;

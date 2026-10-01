@@ -17,6 +17,11 @@ const baseCase: EvalCase = {
   },
 };
 
+test("an includes entry can be a list of alternatives", () => {
+  const [parsed] = parseCases(JSON.stringify([{ ...baseCase, expect: { includes: [["free", "no cost"], "link"] } }]), "cases.json");
+  assert.deepEqual(parsed.expect.includes, [["free", "no cost"], "link"]);
+});
+
 test("accepts a case with every check", () => {
   const [parsed] = parseCases(
     JSON.stringify([
@@ -72,6 +77,7 @@ test("scores every check the case asks for, and only those", () => {
   assert.deepEqual(
     outcome.checks.map((check) => [check.name, check.ok]),
     [
+      ["reply", true],
       ["escalate", true],
       ["includes", true],
       ["lastLineUrl", true],

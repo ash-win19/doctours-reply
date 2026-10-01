@@ -1,17 +1,14 @@
+import { tokenUsage } from "../responder.ts";
 import type { RunOutput } from "../runner.ts";
 import { scoreCase, type EvalCase } from "./cases.ts";
-import type { CheckResult } from "./checks.ts";
-
-export interface ScoredCheck extends CheckResult {
-  name: string;
-}
+import type { NamedCheck } from "./checks.ts";
 
 export interface CaseScore {
   id: string;
   group: string;
   rule: string;
   passed: boolean;
-  checks: ScoredCheck[];
+  checks: NamedCheck[];
   response: string;
   escalate: boolean;
   inputTokens: number;
@@ -27,6 +24,7 @@ export interface Tally {
 
 export interface Scorecard {
   runId: string;
+  // A string, not Mode, so results saved by a mode that was later renamed or removed still load.
   mode: string;
   model: string;
   cases: CaseScore[];
@@ -61,7 +59,6 @@ export function buildScorecard({
 }): Scorecard {
   const scores = cases.map((evalCase, index): CaseScore => {
     const { reply, trace, error, wallTimeMs } = run.results[index];
-    const usage = (trace?.modelCalls ?? []).map((call) => call.usage ?? {});
     // A fallback Reply is not the model's work, so the case fails however its checks would score.
     const { passed, checks } =
       error !== null ? { passed: false, checks: [{ name: "drafted", ok: false, detail: error }] } : scoreCase(evalCase, reply);
@@ -73,9 +70,7 @@ export function buildScorecard({
       checks,
       response: reply.response,
       escalate: reply.escalate,
-      inputTokens: sum(usage.map((call) => call.promptTokenCount ?? 0)),
-      // Gemini reports thinking separately from the visible output. Both are billed as output.
-      outputTokens: sum(usage.map((call) => (call.candidatesTokenCount ?? 0) + (call.thoughtsTokenCount ?? 0))),
+      ...tokenUsage(trace),
       wallTimeMs,
     };
   });

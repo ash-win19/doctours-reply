@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FunctionCallingConfigMode, type Content, type FunctionDeclaration, type GenerateContentParameters } from "@google/genai";
-import { respondBaseline, MAX_TOOL_ROUNDS, ResponderError } from "../src/responder.ts";
+import { respondBaseline, tokenUsage, MAX_TOOL_ROUNDS, ResponderError } from "../src/responder.ts";
 import { VALID_REPLY, scriptedModel, functionCall } from "./fakes.ts";
 
 const options = { model: "fake-model" };
@@ -123,4 +123,11 @@ test("traces usage and latency for every model call", async () => {
     assert.equal(typeof call.latencyMs, "number");
   }
   assert.deepEqual(trace.finalOutput, VALID_REPLY);
+});
+
+test("totals tokens across a trace, counting thinking as output", async () => {
+  const model = scriptedModel([[functionCall("getAllClinicsTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
+  const { trace } = await respondBaseline("hi", { ...options, generate: model.generate });
+  assert.deepEqual(tokenUsage(trace), { inputTokens: 200, outputTokens: 100 });
+  assert.deepEqual(tokenUsage(null), { inputTokens: 0, outputTokens: 0 });
 });

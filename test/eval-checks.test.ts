@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   checkEscalate,
+  checkReply,
   checkExcludes,
   checkIncludes,
   checkLastLineUrl,
@@ -73,4 +74,34 @@ test("attachment URLs have a cap, and null counts as none", () => {
   const result = checkMaxAttachments({ ...VALID_REPLY, attachmentUrls: ["a", "b"] }, 1);
   assert.equal(result.ok, false);
   assert.match(result.detail, /2 attachment URLs, max 1/);
+});
+
+test("prices match however they're written, as whole numbers", () => {
+  const reply = withResponse("Sapphire is 3200 USD with a 500 USD deposit. Gold is $4,500.");
+  assert.equal(checkIncludes(reply, ["$3,200", "$500", "4,500"]).ok, true);
+  assert.equal(checkIncludes(withResponse("Gold is $4,500."), ["$500"]).ok, false);
+  assert.equal(checkIncludes(withResponse("It's $3,000.50 all in."), ["3,000"]).ok, false);
+  assert.equal(checkExcludes(withResponse("Gold is $4,500."), ["500"]).ok, true);
+});
+
+test("an includes entry can list alternatives, and any one of them is enough", () => {
+  assert.equal(checkIncludes(withResponse("It costs nothing."), [["free", "costs nothing"]]).ok, true);
+  const result = checkIncludes(withResponse("It's $50."), [["free", "costs nothing"], "$50"]);
+  assert.equal(result.ok, false);
+  assert.match(result.detail, /missing one of "free" \/ "costs nothing"/);
+});
+
+test("every Reply must match the schema and leave templateId null", () => {
+  assert.equal(checkReply(VALID_REPLY).ok, true);
+  const withTemplate = checkReply({ ...VALID_REPLY, templateId: "tpl_1" });
+  assert.equal(withTemplate.ok, false);
+  assert.match(withTemplate.detail, /templateId/);
+  const broken = checkReply({ ...VALID_REPLY, escalate: "no" } as never);
+  assert.equal(broken.ok, false);
+  assert.match(broken.detail, /schema/);
+});
+
+test("a phrase that is only a symbol, like \"$\", matches literally", () => {
+  assert.equal(checkExcludes(withResponse("I'm getting a person for you."), ["$"]).ok, true);
+  assert.equal(checkExcludes(withResponse("It's $500."), ["$"]).ok, false);
 });

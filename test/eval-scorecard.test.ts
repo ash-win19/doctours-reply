@@ -80,7 +80,7 @@ test("scores each case and records what it needs for comparison", () => {
   );
   assert.equal(card.cases[0].inputTokens, 2100);
   assert.equal(card.cases[0].outputTokens, 290);
-  assert.equal(card.cases[2].checks[0].detail, "expected escalate true, got false");
+  assert.equal(card.cases[2].checks.find((check) => check.name === "escalate")!.detail, "expected escalate true, got false");
 });
 
 test("totals pass rate, tokens and median latency per message", () => {
