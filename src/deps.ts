@@ -1,10 +1,15 @@
 import { ApiError, GoogleGenAI } from "@google/genai";
+import { createRateLimiter, realClock, withRetries } from "./rate-limit.ts";
 import { SetupError, type RunnerDeps } from "./runner.ts";
 
 export const log = (line: string) => process.stderr.write(`${line}\n`);
 
 // Read now so the setting is in one place. Baseline mode has no triage step, so nothing uses it yet.
 export const TRIAGE_MODEL = process.env.TRIAGE_MODEL ?? "gemini-3.5-flash-lite";
+
+// Gemini's free tier allowed 5 requests per minute per model when this was written.
+const DEFAULT_REQUESTS_PER_MINUTE = 5;
+const ATTEMPTS = 8;
 
 // Errors every message would hit the same way, so the run stops instead of escalating each one.
 // Gemini answers a bad API key with 400.
@@ -22,18 +27,27 @@ export function defaultRunnerDeps(): RunnerDeps {
   if (!apiKey) {
     throw new SetupError("Set GEMINI_API_KEY before running");
   }
-  // The free tier has low per-minute limits and four messages run at once, so 429s are expected.
-  // The SDK retries them with exponential backoff, up to a minute between attempts.
-  const client = new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts: 8 } } });
+  const requestsPerMinute = Number(process.env.REQUESTS_PER_MINUTE ?? DEFAULT_REQUESTS_PER_MINUTE);
+  if (!Number.isInteger(requestsPerMinute) || requestsPerMinute < 1) {
+    throw new SetupError("REQUESTS_PER_MINUTE must be a whole number of at least 1");
+  }
+  // Retries are ours, so they go through the same pacing as first attempts.
+  const client = new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts: 1 } } });
+  const acquire = createRateLimiter(requestsPerMinute, realClock);
   return {
-    generate: async (params) => {
-      try {
-        return await client.models.generateContent(params);
-      } catch (error) {
-        throw toSetupError(error) ?? error;
-      }
-    },
-    responderModel: process.env.RESPONDER_MODEL ?? "gemini-3.8-flash",
+    generate: (params) =>
+      withRetries(
+        async () => {
+          await acquire();
+          try {
+            return await client.models.generateContent(params);
+          } catch (error) {
+            throw toSetupError(error) ?? error;
+          }
+        },
+        { ...realClock, attempts: ATTEMPTS, log },
+      ),
+    responderModel: process.env.RESPONDER_MODEL ?? "gemini-3.5-flash-lite",
     traceRoot: "traces",
     log,
   };

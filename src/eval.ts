@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { parseMessages } from "./cli.ts";
 import { defaultRunnerDeps, log } from "./deps.ts";
 import { ReplySchema } from "./reply.ts";
-import { parseMode, runMessages } from "./runner.ts";
+import { isDraftingFailure, parseMode, runMessages } from "./runner.ts";
 
 // Runs the packet's five messages and checks the output contract plus each expected escalate value.
 // The expectations stay here and never reach the model.
@@ -25,7 +25,9 @@ messages.forEach((message, index) => {
   const parsed = ReplySchema.safeParse(reply);
   if (!parsed.success) failures.push(`${message.id}: Reply does not match the schema`);
   if (reply?.templateId !== null) failures.push(`${message.id}: templateId is not null`);
-  if (reply?.escalate !== expectedEscalate[message.id]) {
+  if (reply && isDraftingFailure(reply)) {
+    failures.push(`${message.id}: the model never finished a Reply (see its trace)`);
+  } else if (reply?.escalate !== expectedEscalate[message.id]) {
     failures.push(`${message.id}: escalate is ${reply?.escalate}, expected ${expectedEscalate[message.id]}`);
   }
   log(`${message.id}: ${JSON.stringify(reply?.response)}`);

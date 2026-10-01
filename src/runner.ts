@@ -44,6 +44,11 @@ const DRAFTING_FAILED_REPLY: Reply = {
   workingMemoryUpdates: null,
 };
 
+// True when the Reply is the fallback for a message the model never finished, not one it wrote.
+export function isDraftingFailure(reply: Reply): boolean {
+  return reply === DRAFTING_FAILED_REPLY;
+}
+
 function traceFileNames(messages: HumanMessage[]): string[] {
   const used = new Map<string, number>();
   return messages.map(({ id }) => {

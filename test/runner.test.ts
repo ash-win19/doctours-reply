@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Content, GenerateContentParameters } from "@google/genai";
-import { runMessages, MAX_CONCURRENCY, SetupError } from "../src/runner.ts";
+import { runMessages, MAX_CONCURRENCY, SetupError, isDraftingFailure } from "../src/runner.ts";
 import { ReplySchema } from "../src/reply.ts";
 import type { GenerateContent } from "../src/responder.ts";
 import { VALID_REPLY, generation, functionCall } from "./fakes.ts";
@@ -89,6 +89,7 @@ test("a message that fails still gets a schema-valid escalation Reply", async ()
   assert.ok(ReplySchema.safeParse(replies[0]).success);
   assert.equal(replies[0].escalate, true);
   assert.equal(replies[0].templateId, null);
+  assert.ok(isDraftingFailure(replies[0]));
   const [runId] = readdirSync(deps.traceRoot);
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));
   assert.match(trace.error, /API down/);
@@ -125,4 +126,12 @@ test("a failed message's trace keeps its model calls", async () => {
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));
   assert.equal(trace.modelCalls.length, 1);
   assert.match(trace.error, /without calling a tool/);
+});
+
+test("a Reply the model wrote is not a drafting failure, even when it escalates", async () => {
+  const generate: GenerateContent = async () =>
+    generation([functionCall("submitReply", { ...VALID_REPLY, escalate: true, escalationReason: "Asked for a person" })]);
+  const [reply] = await runMessages(inputs.slice(0, 1), "baseline", { ...setup(), generate, responderModel: "fake" });
+  assert.equal(reply.escalate, true);
+  assert.equal(isDraftingFailure(reply), false);
 });

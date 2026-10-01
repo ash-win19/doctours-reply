@@ -4,7 +4,7 @@ Writes the Coordinator's Reply to a Patient's text message, or escalates to an O
 
 ## Run it
 
-You need Node 22 or newer and a free Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey). Replies come from `gemini-3.8-flash`. On the free tier, Google may use prompts and responses to improve its products.
+You need Node 22 or newer and a free Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey). Replies come from `gemini-3.5-flash-lite`. On the free tier, Google may use prompts and responses to improve its products.
 
 ```sh
 npm install
@@ -18,9 +18,15 @@ npm run respond -- --mode baseline messages.json > replies.json
 - Up to 4 messages run at once.
 - Each message writes a trace to `traces/<runId>/<messageId>.json`. A trace holds the input, the filled prompts, every tool call and result, the final model output, and tokens (including cached and thinking tokens) and latency for each model call.
 
-The baseline prompt is about 22k tokens per request. The free tier has low per-minute limits, so rate limits (429) are retried with exponential backoff, up to a minute between attempts. A run can take a few minutes.
+The free tier has a low per-model request limit (5 per minute for Flash when this was written), and Gemini counts the baseline prompt at about 40k tokens per request. So the runner paces requests:
 
-`RESPONDER_MODEL` sets the Gemini model and defaults to `gemini-3.8-flash`. `TRIAGE_MODEL` defaults to `gemini-3.5-flash-lite` and is unused until a mode with triage lands.
+- `REQUESTS_PER_MINUTE` (default 5) caps how many model requests start in any rolling minute, across all 4 concurrent messages. Retries count against it too. Raise it if your AI Studio rate-limit page shows a higher limit.
+- A rate limit (429) is retried after the delay Gemini asks for. An overload (503 "high demand") backs off exponentially, up to a minute between tries, for 8 attempts in total.
+- If the free daily quota is used up, the run stops instead of retrying.
+
+Expect the five packet messages to take a few minutes.
+
+`RESPONDER_MODEL` sets the Gemini model and defaults to `gemini-3.5-flash-lite`, a free model that tends to see less demand than the newest Flash. Set it to `gemini-3.8-flash` for stronger replies if your quota allows. `TRIAGE_MODEL` defaults to `gemini-3.5-flash-lite` and is unused until a mode with triage lands.
 
 The run ID is the run's start time as an ISO timestamp, with `:` swapped for `-` so it works as a directory name.
 
@@ -42,4 +48,4 @@ npm run typecheck
 npm run eval        # runs the packet's five messages through the real model
 ```
 
-`npm run eval` checks that the five packet messages produce five schema-valid Replies with the expected `escalate` values. The expected values stay in `fixtures/` and never reach the model.
+`npm run eval` checks that the five packet messages produce five schema-valid Replies with the expected `escalate` values. A message the model never finished counts as a failure, even though its fallback Reply escalates. The expected values stay in `fixtures/` and never reach the model.
