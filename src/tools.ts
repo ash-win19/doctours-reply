@@ -1,4 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import type Groq from "groq-sdk";
 import { z } from "zod";
 import * as packet from "./packet-tools.ts";
 
@@ -105,16 +105,18 @@ const SPECS: Record<string, ToolSpec<z.ZodType>> = {
   }),
 };
 
-function toInputSchema(schema: z.ZodType): Anthropic.Tool.InputSchema {
+function toParameters(schema: z.ZodType): Record<string, unknown> {
   const { $schema: _ignored, ...jsonSchema } = z.toJSONSchema(schema) as Record<string, unknown>;
-  return jsonSchema as Anthropic.Tool.InputSchema;
+  return jsonSchema;
 }
 
-export function toolDefinition(name: string, description: string, input: z.ZodType): Anthropic.Tool {
-  return { name, description, input_schema: toInputSchema(input) };
+export type FunctionTool = Groq.Chat.ChatCompletionTool & { type: "function"; function: Groq.FunctionDefinition };
+
+export function toolDefinition(name: string, description: string, input: z.ZodType): FunctionTool {
+  return { type: "function", function: { name, description, parameters: toParameters(input) } };
 }
 
-export const TOOLS: Anthropic.Tool[] = Object.entries(SPECS).map(([name, toolSpec]) =>
+export const TOOLS: FunctionTool[] = Object.entries(SPECS).map(([name, toolSpec]) =>
   toolDefinition(name, toolSpec.description, toolSpec.input),
 );
 

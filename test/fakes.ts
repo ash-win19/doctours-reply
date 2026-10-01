@@ -1,5 +1,5 @@
-import type Anthropic from "@anthropic-ai/sdk";
-import type { CreateMessage } from "../src/responder.ts";
+import type Groq from "groq-sdk";
+import type { CreateCompletion, CompletionParams } from "../src/responder.ts";
 import type { Reply } from "../src/reply.ts";
 
 export const VALID_REPLY: Reply = {
@@ -17,37 +17,58 @@ export const VALID_REPLY: Reply = {
 
 let nextId = 0;
 
-export function toolUse(name: string, input: unknown): Anthropic.ToolUseBlock {
-  nextId += 1;
-  return { type: "tool_use", id: `toolu_${nextId}`, name, input, caller: { type: "direct" } } as Anthropic.ToolUseBlock;
+export interface FakeToolCall {
+  name: string;
+  arguments: string;
 }
 
-export function message(content: Anthropic.ContentBlock[]): Anthropic.Message {
+export function toolCall(name: string, input: unknown): FakeToolCall {
+  return { name, arguments: JSON.stringify(input) };
+}
+
+// Builds the completion a model returns when it calls the given tools, or answers in text when there are none.
+export function completion(calls: FakeToolCall[], text: string | null = null): Groq.Chat.ChatCompletion {
+  nextId += 1;
   return {
-    id: `msg_${++nextId}`,
-    type: "message",
-    role: "assistant",
+    id: `chatcmpl_${nextId}`,
+    object: "chat.completion",
+    created: 0,
     model: "fake-model",
-    content,
-    stop_reason: "tool_use",
-    stop_sequence: null,
+    choices: [
+      {
+        index: 0,
+        finish_reason: calls.length ? "tool_calls" : "stop",
+        logprobs: null,
+        message: {
+          role: "assistant",
+          content: text,
+          reasoning: "thinking it over",
+          tool_calls: calls.map((call) => ({
+            id: `call_${++nextId}`,
+            type: "function" as const,
+            function: { name: call.name, arguments: call.arguments },
+          })),
+        },
+      },
+    ],
     usage: {
-      input_tokens: 100,
-      output_tokens: 20,
-      cache_creation_input_tokens: 0,
-      cache_read_input_tokens: 80,
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      prompt_tokens_details: { cached_tokens: 80 },
+      total_time: 0.2,
     },
-  } as Anthropic.Message;
+  } as Groq.Chat.ChatCompletion;
 }
 
 // Replays the given turns in order and records every request it receives.
-export function scriptedModel(turns: Anthropic.ContentBlock[][]) {
-  const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
-  const create: CreateMessage = async (params) => {
+export function scriptedModel(turns: FakeToolCall[][]) {
+  const requests: CompletionParams[] = [];
+  const create: CreateCompletion = async (params) => {
     requests.push(structuredClone(params));
     const turn = turns[requests.length - 1];
     if (!turn) throw new Error("Scripted model ran out of turns");
-    return message(turn);
+    return completion(turn);
   };
   return { create, requests };
 }

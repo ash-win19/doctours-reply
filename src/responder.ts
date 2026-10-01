@@ -1,4 +1,5 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import type Groq from "groq-sdk";
+import type { ChatCompletionCreateParamsNonStreaming } from "groq-sdk/resources/chat/completions";
 import { z } from "zod";
 import { buildBaselineSystemPrompt, buildBaselineUserMessage } from "./prompt.ts";
 import { ReplySchema, type Reply } from "./reply.ts";
@@ -9,19 +10,20 @@ export const MAX_TOOL_ROUNDS = 8;
 const MAX_MODEL_CALLS = MAX_TOOL_ROUNDS + 2;
 const SUBMIT_REPLY = "submitReply";
 
-export type CreateMessage = (
-  params: Anthropic.MessageCreateParamsNonStreaming,
-) => Promise<Anthropic.Message>;
+export type CompletionParams = ChatCompletionCreateParamsNonStreaming;
+
+export type CreateCompletion = (params: CompletionParams) => Promise<Groq.Chat.ChatCompletion>;
 
 export interface ResponderOptions {
-  create: CreateMessage;
+  create: CreateCompletion;
   model: string;
 }
 
 export interface ModelCallTrace {
   model: string;
-  stopReason: Anthropic.StopReason | null;
-  usage: Anthropic.Usage;
+  finishReason: string | null;
+  reasoning: string | null;
+  usage: Groq.CompletionUsage | null;
   latencyMs: number;
 }
 
@@ -56,6 +58,16 @@ const submitReplyTool = toolDefinition(
   ReplySchema,
 );
 
+type ParsedArguments = { ok: true; value: unknown } | { ok: false; error: string };
+
+function parseArguments(raw: string): ParsedArguments {
+  try {
+    return { ok: true, value: JSON.parse(raw) };
+  } catch {
+    return { ok: false, error: `Tool arguments are not valid JSON: ${raw}` };
+  }
+}
+
 export async function respondBaseline(
   humanMessage: string,
   { create, model }: ResponderOptions,
@@ -63,62 +75,70 @@ export async function respondBaseline(
   const system = buildBaselineSystemPrompt();
   const userMessage = buildBaselineUserMessage(humanMessage);
   const trace: ResponderTrace = { system, userMessage, modelCalls: [], toolCalls: [], finalOutput: null };
-  const messages: Anthropic.MessageParam[] = [{ role: "user", content: userMessage }];
+  const messages: Groq.Chat.ChatCompletionMessageParam[] = [
+    { role: "system", content: system },
+    { role: "user", content: userMessage },
+  ];
 
   for (let call = 0; call < MAX_MODEL_CALLS; call++) {
-    const toolChoice: Anthropic.ToolChoice =
-      call < MAX_TOOL_ROUNDS ? { type: "any" } : { type: "tool", name: SUBMIT_REPLY };
+    const toolChoice: Groq.Chat.ChatCompletionToolChoiceOption =
+      call < MAX_TOOL_ROUNDS ? "required" : { type: "function", function: { name: SUBMIT_REPLY } };
     const started = performance.now();
-    const response = await create({
+    const completion = await create({
       model,
-      max_tokens: 16000,
-      // Forced tool choice needs thinking off.
-      thinking: { type: "disabled" },
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+      max_completion_tokens: 16000,
       tools: [...TOOLS, submitReplyTool],
       tool_choice: toolChoice,
       messages,
     });
+    const [choice] = completion.choices;
     trace.modelCalls.push({
-      model: response.model,
-      stopReason: response.stop_reason,
-      usage: response.usage,
+      model: completion.model,
+      finishReason: choice?.finish_reason ?? null,
+      reasoning: choice?.message.reasoning ?? null,
+      usage: completion.usage ?? null,
       latencyMs: Math.round(performance.now() - started),
     });
-    messages.push({ role: "assistant", content: response.content });
 
-    const toolUses = response.content.filter(
-      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
-    );
-    const results: Anthropic.ToolResultBlockParam[] = [];
-    for (const toolUse of toolUses) {
-      if (toolUse.name === SUBMIT_REPLY) {
-        trace.finalOutput = toolUse.input;
-        const parsed = ReplySchema.safeParse(toolUse.input);
-        if (parsed.success) {
+    const toolCalls = choice?.message.tool_calls ?? [];
+    if (toolCalls.length === 0) {
+      throw new ResponderError(
+        `Model stopped without calling a tool (finish reason: ${choice?.finish_reason ?? "none"})`,
+        trace,
+      );
+    }
+    // gpt-oss reasons between tool calls, so its reasoning goes back with the calls it made.
+    messages.push({
+      role: "assistant",
+      content: choice.message.content,
+      reasoning: choice.message.reasoning,
+      tool_calls: toolCalls,
+    });
+
+    for (const toolCall of toolCalls) {
+      const { name } = toolCall.function;
+      const args = parseArguments(toolCall.function.arguments);
+      let content: string;
+      if (name === SUBMIT_REPLY) {
+        trace.finalOutput = args.ok ? args.value : toolCall.function.arguments;
+        const parsed = args.ok ? ReplySchema.safeParse(args.value) : null;
+        if (parsed?.success) {
           return { reply: { ...parsed.data, templateId: null }, trace };
         }
-        results.push({
-          type: "tool_result",
-          tool_use_id: toolUse.id,
-          is_error: true,
-          content: `The Reply does not match the schema. Fix it and call ${SUBMIT_REPLY} again.\n${z.prettifyError(parsed.error)}`,
+        const problem = parsed ? z.prettifyError(parsed.error) : (args as { error: string }).error;
+        content = `The Reply does not match the schema. Fix it and call ${SUBMIT_REPLY} again.\n${problem}`;
+      } else {
+        const toolResult = args.ok ? runTool(name, args.value) : ({ isError: true, output: args.error } as const);
+        trace.toolCalls.push({
+          name,
+          input: args.ok ? args.value : toolCall.function.arguments,
+          output: toolResult.output,
+          isError: toolResult.isError,
         });
-        continue;
+        content = typeof toolResult.output === "string" ? toolResult.output : JSON.stringify(toolResult.output);
       }
-      const toolResult = runTool(toolUse.name, toolUse.input);
-      trace.toolCalls.push({ name: toolUse.name, input: toolUse.input, output: toolResult.output, isError: toolResult.isError });
-      results.push({
-        type: "tool_result",
-        tool_use_id: toolUse.id,
-        is_error: toolResult.isError || undefined,
-        content: typeof toolResult.output === "string" ? toolResult.output : JSON.stringify(toolResult.output),
-      });
+      messages.push({ role: "tool", tool_call_id: toolCall.id, content });
     }
-    if (results.length === 0) {
-      throw new ResponderError(`Model stopped without calling a tool (stop reason: ${response.stop_reason})`, trace);
-    }
-    messages.push({ role: "user", content: results });
   }
 
   throw new ResponderError(`Model did not submit a valid Reply within ${MAX_MODEL_CALLS} calls`, trace);

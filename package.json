@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
+    "groq-sdk": "^1.6.0",
     "tsx": "^4.23.15",
     "zod": "^4.6.5"
   },

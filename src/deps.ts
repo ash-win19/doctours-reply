@@ -1,32 +1,32 @@
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { SetupError, type RunnerDeps } from "./runner.ts";
 
 export const log = (line: string) => process.stderr.write(`${line}\n`);
 
 // Read now so the setting is in one place. Baseline mode has no triage step, so nothing uses it yet.
-export const TRIAGE_MODEL = process.env.TRIAGE_MODEL ?? "claude-haiku-4-5-20251001";
+export const TRIAGE_MODEL = process.env.TRIAGE_MODEL ?? "openai/gpt-oss-20b";
 
 export function defaultRunnerDeps(): RunnerDeps {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new SetupError("Set ANTHROPIC_API_KEY before running");
+  if (!process.env.GROQ_API_KEY) {
+    throw new SetupError("Set GROQ_API_KEY before running");
   }
-  const client = new Anthropic();
+  const client = new Groq();
   return {
     create: async (params) => {
       try {
-        return await client.messages.create(params);
+        return await client.chat.completions.create(params);
       } catch (error) {
         if (
-          error instanceof Anthropic.AuthenticationError ||
-          error instanceof Anthropic.PermissionDeniedError ||
-          error instanceof Anthropic.NotFoundError
+          error instanceof Groq.AuthenticationError ||
+          error instanceof Groq.PermissionDeniedError ||
+          error instanceof Groq.NotFoundError
         ) {
           throw new SetupError(`${error.constructor.name}: ${error.message}`);
         }
         throw error;
       }
     },
-    responderModel: process.env.RESPONDER_MODEL ?? "claude-sonnet-5",
+    responderModel: process.env.RESPONDER_MODEL ?? "openai/gpt-oss-120b",
     traceRoot: "traces",
     log,
   };

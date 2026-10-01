@@ -3,27 +3,27 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type Anthropic from "@anthropic-ai/sdk";
+import type Groq from "groq-sdk";
 import { runMessages, MAX_CONCURRENCY, SetupError } from "../src/runner.ts";
 import { ReplySchema } from "../src/reply.ts";
-import type { CreateMessage } from "../src/responder.ts";
-import { VALID_REPLY, message, toolUse } from "./fakes.ts";
+import type { CreateCompletion, CompletionParams } from "../src/responder.ts";
+import { VALID_REPLY, completion, toolCall } from "./fakes.ts";
 
-function incomingText(params: Anthropic.MessageCreateParamsNonStreaming): string {
-  return (params.messages[0].content as string).split("\n")[1];
+function incomingText(params: CompletionParams): string {
+  return (params.messages[1].content as string).split("\n")[1];
 }
 
 // Answers each message by echoing its text back, after a delay that varies by message.
 function echoModel(delayMs: (text: string) => number) {
   let inFlight = 0;
   let peak = 0;
-  const create: CreateMessage = async (params) => {
+  const create: CreateCompletion = async (params) => {
     inFlight += 1;
     peak = Math.max(peak, inFlight);
     const text = incomingText(params);
     await new Promise((resolve) => setTimeout(resolve, delayMs(text)));
     inFlight -= 1;
-    return message([toolUse("submitReply", { ...VALID_REPLY, response: text })]);
+    return completion([toolCall("submitReply", { ...VALID_REPLY, response: text })]);
   };
   return { create, peak: () => peak };
 }
@@ -81,7 +81,7 @@ test("message ids become safe, unique trace file names", async () => {
 
 test("a message that fails still gets a schema-valid escalation Reply", async () => {
   const deps = setup();
-  const create: CreateMessage = async () => {
+  const create: CreateCompletion = async () => {
     throw new Error("API down");
   };
   const replies = await runMessages(inputs.slice(0, 1), "baseline", { ...deps, create, responderModel: "fake" });
@@ -95,22 +95,22 @@ test("a message that fails still gets a schema-valid escalation Reply", async ()
 });
 
 test("a setup error fails the whole run instead of escalating", async () => {
-  const create: CreateMessage = async () => {
-    throw new SetupError("ANTHROPIC_API_KEY is invalid");
+  const create: CreateCompletion = async () => {
+    throw new SetupError("GROQ_API_KEY is invalid");
   };
   await assert.rejects(
     runMessages(inputs.slice(0, 2), "baseline", { ...setup(), create, responderModel: "fake" }),
-    /ANTHROPIC_API_KEY/,
+    /GROQ_API_KEY/,
   );
 });
 
 test("after a setup error no new messages start", async () => {
   let calls = 0;
-  const create: CreateMessage = async () => {
+  const create: CreateCompletion = async () => {
     calls += 1;
     if (calls === 1) throw new SetupError("bad key");
     await new Promise((resolve) => setTimeout(resolve, 10));
-    return message([toolUse("submitReply", VALID_REPLY)]);
+    return completion([toolCall("submitReply", VALID_REPLY)]);
   };
   await assert.rejects(runMessages(inputs, "baseline", { ...setup(), create, responderModel: "fake" }), /bad key/);
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -119,7 +119,7 @@ test("after a setup error no new messages start", async () => {
 
 test("a failed message's trace keeps its model calls", async () => {
   const deps = setup();
-  const create: CreateMessage = async () => message([{ type: "text", text: "no tools", citations: null } as Anthropic.TextBlock]);
+  const create: CreateCompletion = async () => completion([], "no tools");
   await runMessages(inputs.slice(0, 1), "baseline", { ...deps, create, responderModel: "fake" });
   const [runId] = readdirSync(deps.traceRoot);
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));

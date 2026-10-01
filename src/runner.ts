@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Reply } from "./reply.ts";
-import { ResponderError, respondBaseline, type CreateMessage, type ResponderTrace } from "./responder.ts";
+import { ResponderError, respondBaseline, type CreateCompletion, type ResponderTrace } from "./responder.ts";
 
 export const MAX_CONCURRENCY = 4;
 
@@ -21,7 +21,7 @@ export interface HumanMessage {
 }
 
 export interface RunnerDeps {
-  create: CreateMessage;
+  create: CreateCompletion;
   responderModel: string;
   traceRoot: string;
   log: (line: string) => void;
