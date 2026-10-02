@@ -286,6 +286,20 @@ export function checkAttachments(reply: Reply, evidence: TurnEvidence): NamedChe
   return { name: "attachments", ok: problems.length === 0, detail: problems.length ? problems.join("; ") : "attachments are fine" };
 }
 
+// Sanitize before a draft can become bestSoFar. Every repair/fallback path must obey
+// the attachment contract even if the model never produces a better Reply.
+function fixAttachments(reply: Reply, evidence: TurnEvidence): FixResult {
+  const check = checkAttachments(reply, evidence);
+  if (check.ok) return { reply, fixes: [] };
+  const urls = (reply.attachmentUrls ?? []).filter((url) => evidence.toolUrls.has(url)).slice(0, MAX_ATTACHMENTS);
+  return {
+    reply: { ...reply, attachmentUrls: urls.length ? urls : null },
+    fixes: [`filtered attachmentUrls to tool-returned URLs, at most ${MAX_ATTACHMENTS}: ${check.detail}`],
+    // The response may refer to removed photos. Let the model revise it or fetch evidence.
+    failures: [{ name: check.name, detail: check.detail }],
+  };
+}
+
 export interface ValidationResult extends FixResult {
   // What still needs the model: fixes that removed something the Patient may need, then checks that fail.
   failures: Failure[];
@@ -298,6 +312,7 @@ const FIXES: ((reply: Reply, evidence: TurnEvidence) => FixResult)[] = [
   fixCardDigits,
   fixUnknownUrls,
   fixUrlPlacement,
+  fixAttachments,
 ];
 
 const CHECKS: ((reply: Reply, evidence: TurnEvidence) => NamedCheck)[] = [checkAmounts, checkBannedPhrases, checkAttachments];

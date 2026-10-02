@@ -230,6 +230,19 @@ test("baseline mode stays the untouched before, with no validator", async () => 
   assert.equal((trace as { validation?: unknown }).validation, undefined);
 });
 
+test("default-mode baseline fallback also removes attachments absent from this turn's tools", async () => {
+  const draft = { ...VALID_REPLY, attachmentUrls: ["https://www.doctours.com/consultation"] };
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
+    [functionCall("submitReply", draft)],
+    [functionCall("submitReply", draft)],
+  ]);
+  const { reply, trace } = await respond("Is the consultation free?", "default", options(model.create));
+  assert.equal((trace as PipelineTrace).path, "baseline");
+  assert.equal(reply.attachmentUrls, null, "the response URL allowlist does not ground attachments");
+  assert.equal(reply.escalate, false);
+});
+
 test("a card-like run with an invalid checksum escalates before any model call", async () => {
   const message = "my card number is 4111 1111 1111 1112, can you check it?";
   const { reply, trace } = await respond(message, "default", options(noModel));

@@ -6,6 +6,7 @@ import { DraftingError } from "../src/model-calls.ts";
 import { loadSkillRegistry, statusModule } from "../src/skills.ts";
 import { escalationReply } from "../src/escalation.ts";
 import { PACKET_CONTEXT as context } from "../src/patient-context.ts";
+import { getPatientImages } from "../src/packet-tools.ts";
 import {
   VALID_REPLY,
   firstUserText, systemText,
@@ -253,6 +254,53 @@ test("a repair that doesn't come back as a valid Reply ships the first version",
   const { result } = run([], [[functionCall("submitReply", invented)], [functionCall("submitReply", { response: 42 })]]);
   const { reply } = await result;
   assert.equal(reply.response, "Silver is $2,999.");
+});
+
+test("repeated invalid attachments never ship, even when both drafts violate the limit", async () => {
+  const images = getPatientImages({});
+  const urls = Object.values(images.angles).flatMap((angle) => angle.urls).slice(0, 4);
+  assert.equal(urls.length, 4);
+  const draft = { ...VALID_REPLY, response: "Here are your photos.", attachmentUrls: ["https://made.up/photo.jpg", ...urls] };
+  const { result } = run(["intake-photos"], [
+    [functionCall("getPatientImagesTool", {})],
+    [functionCall("submitReply", draft)],
+    [functionCall("submitReply", draft)],
+  ]);
+  const { reply, trace } = await result;
+  assert.deepEqual(reply.attachmentUrls, urls.slice(0, 3));
+  assert.equal(trace.validation.repairRan, true);
+  assert.equal(trace.validation.runs.length, 2);
+});
+
+test("an unsuccessful attachment repair can only ship the sanitized first draft", async () => {
+  const draft = { ...VALID_REPLY, attachmentUrls: ["https://made.up/photo.jpg"] };
+  const repairs: FakeFunctionCall[][][] = [
+    [[functionCall("submitReply", { response: 42 })]],
+    [[functionCall("escalate", { reason: "Cannot repair", cannotDo: null })]],
+    [[]],
+    Array.from({ length: 3 }, () => [functionCall("loadSkill", { id: "unknown-skill" })]),
+  ];
+  for (const repair of repairs) {
+    const { result } = run([], [[functionCall("submitReply", draft)], ...repair]);
+    const { reply } = await result;
+    assert.equal(reply.attachmentUrls, null);
+    assert.equal(reply.escalate, false);
+  }
+});
+
+test("attachment repair can fetch evidence and return grounded photos", async () => {
+  const url = getPatientImages({}).angles.front.urls[0];
+  const draft = { ...VALID_REPLY, response: "Here is your photo.", attachmentUrls: [url] };
+  const { result } = run(["intake-photos"], [
+    [functionCall("submitReply", draft)],
+    [functionCall("getPatientImagesTool", {})],
+    [functionCall("submitReply", draft)],
+  ]);
+  const { reply, trace } = await result;
+  assert.deepEqual(reply.attachmentUrls, [url]);
+  assert.equal(trace.validation.shipped, "repaired");
+  assert.ok(trace.validation.runs[0].fixes.some((fix) => fix.includes("attachmentUrls")));
+  assert.deepEqual(trace.validation.runs[1].fixes, []);
 });
 
 test("an Escalation from the escalate tool skips the validator", async () => {

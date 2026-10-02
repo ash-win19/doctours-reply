@@ -221,3 +221,15 @@ test("attachmentUrls holds at most 3 entries, all returned by a tool", () => {
     { name: "attachments", detail: "https://made.up/photo.jpg wasn't returned by a tool" },
   ]);
 });
+
+test("attachments are filtered before the cap, preserving tool-returned order and normalizing empty output", () => {
+  const urls = ["a", "b", "c", "d"].map((name) => `https://example.test/${name}.jpg`);
+  const evidence = evidenceFrom(urls);
+  const draft = reply("Here are photos.", { attachmentUrls: ["https://made.up/photo.jpg", ...urls] });
+  const result = validate(draft, evidence);
+  assert.deepEqual(result.reply.attachmentUrls, urls.slice(0, 3));
+  assert.equal(draft.attachmentUrls?.length, 5, "do not mutate the submitted draft");
+  assert.equal(result.checks.find((check) => check.name === "attachments")?.ok, true);
+  assert.ok(result.failures.some((failure) => failure.name === "attachments"), "still ask for a repair after removal");
+  assert.equal(validate(reply("Here it is.", { attachmentUrls: ["https://made.up/photo.jpg"] }), evidence).reply.attachmentUrls, null);
+});
