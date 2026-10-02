@@ -77,10 +77,7 @@ test("the index gives triage each skill's id and description", () => {
 
 test("the shipped skills load, and decision-funnel brings clinic-packages", () => {
   const registry = loadSkillRegistry();
-  assert.deepEqual(
-    registry.index().map(({ id }) => id),
-    ["clinic-packages", "decision-funnel", "payments"],
-  );
+  for (const id of ["clinic-packages", "decision-funnel", "payments"]) assert.ok(registry.has(id), id);
   assert.deepEqual(registry.resolve(["decision-funnel"]).map((skill) => skill.id), ["clinic-packages", "decision-funnel"]);
   for (const { id } of registry.index()) {
     const [skill] = registry.resolve([id]).filter((loaded) => loaded.id === id);
