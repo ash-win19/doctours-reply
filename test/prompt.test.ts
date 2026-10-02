@@ -52,14 +52,14 @@ test("the core prompt fills every placeholder from the Patient context", () => {
   assert.ok(core.includes(context.WORKING_MEMORY));
   assert.ok(
     core.includes(
-      "from this list: https://www.doctours.com/consultation (book the free consultation), https://www.doctours.com/image-upload (intake photos), and https://www.doctours.com/clinic/{slug} with a slug",
+      "from this list: https://www.doctours.com/consultation (book the free consultation), https://www.doctours.com/image-upload (intake photos), https://hims.com (policy-approved hair-loss provider), https://keeps.com (policy-approved hair-loss provider), and https://www.doctours.com/clinic/{slug} with a slug",
     ),
   );
   assert.ok(core.includes("at most 3. Otherwise null."));
   assert.match(core, /call loadSkill with one of these ids:\n- payments: Money questions\.\n/);
 });
 
-// English prose runs above 4 characters per token, so characters / 4 is a safe upper estimate.
+// A rough size guard only; characters / 4 is not an exact model-token count.
 test("the core prompt, with every shipped skill listed for loadSkill, stays under 3k tokens", () => {
   const core = buildCorePrompt(context, loadSkillRegistry().index());
   assert.ok(core.length / 4 < 3000, `core is about ${Math.round(core.length / 4)} tokens`);

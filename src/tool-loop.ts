@@ -37,8 +37,8 @@ export interface ResponderTrace extends Trace {
 export type ToolOutcome = ToolRun | { reply: Reply };
 
 // What happens to a submitted Reply: it ships, or the model gets one repair turn with the `repair` message, and
-// `bestSoFar` ships if the repair never comes back as a valid Reply.
-export type SubmitOutcome = { reply: Reply } | { repair: string; bestSoFar: Reply };
+// `fallback` supplies a safe terminal Reply if repair never returns a valid submission.
+export type SubmitOutcome = { reply: Reply } | { repair: string; fallback: () => Reply };
 
 export interface ToolLoop {
   trace: ResponderTrace;
@@ -66,7 +66,7 @@ export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOption
   let forceSubmitFrom = MAX_TOOL_ROUNDS;
   let callLimit = MAX_MODEL_CALLS;
   // Once a repair turn is asked for, the Reply that ships if the repair never lands.
-  let bestSoFar: Reply | null = null;
+  let repairFallback: (() => Reply) | null = null;
   for (let call = 0; call < callLimit; call++) {
     const toolChoice: ToolChoiceOptions | ToolChoiceFunction =
       call < forceSubmitFrom ? "required" : { type: "function", name: SUBMIT_REPLY };
@@ -87,9 +87,19 @@ export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOption
       "responder",
     );
 
-    const calls = functionCalls(response);
+    const calls = functionCalls(response).toSorted((a, b) => {
+      // A handoff takes precedence over a sales submission or write in the same batch.
+      const priority = (call: typeof a): number => {
+        if (call.name === "escalate") return 1;
+        if (call.name !== SUBMIT_REPLY) return 0;
+        const args = parseArguments(call.arguments);
+        const reply = args.ok ? ReplySchema.safeParse(args.value) : null;
+        return reply?.success && reply.data.escalate ? 1 : 0;
+      };
+      return priority(b) - priority(a);
+    });
     if (calls.length === 0) {
-      if (bestSoFar) return bestSoFar;
+      if (repairFallback) return repairFallback();
       const reason = response.incomplete_details?.reason ?? response.status ?? "unknown";
       throw new DraftingError(`Model stopped without calling a tool (${reason})`, trace);
     }
@@ -106,14 +116,14 @@ export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOption
       } else if (name === SUBMIT_REPLY) {
         const submission = parseSubmission(functionCall, ReplySchema, "The Reply");
         trace.finalOutput = submission.raw;
-        if (!submission.ok && bestSoFar) return bestSoFar;
+        if (!submission.ok && repairFallback) return repairFallback();
         if (!submission.ok) {
           output = submission.feedback;
         } else {
           // Code owns templateId on every submitted Reply.
           const outcome = loop.onSubmit({ ...submission.value, templateId: null });
           if ("reply" in outcome) return outcome.reply;
-          bestSoFar = outcome.bestSoFar;
+          repairFallback = outcome.fallback;
           repairRequest = outcome.repair;
           callLimit = call + 1 + REPAIR_CALLS;
           forceSubmitFrom = callLimit - 1;
@@ -122,11 +132,6 @@ export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOption
       } else {
         const args = parseArguments(functionCall.arguments);
         const outcome: ToolOutcome = args.ok ? await loop.callTool(name, args.value) : { isError: true, output: args.error };
-        if ("reply" in outcome && bestSoFar && outcome.reply.escalate !== bestSoFar.escalate) {
-          trace.toolCalls.push({ name, input: args.ok ? args.value : functionCall.arguments, isError: true,
-            output: "Repair cannot change escalation. Keeping the first Reply." });
-          return bestSoFar;
-        }
         const traced = "reply" in outcome ? { isError: false, output: outcome.reply } : outcome;
         trace.toolCalls.push({ name, input: args.ok ? args.value : functionCall.arguments, ...traced });
         if ("reply" in outcome) return outcome.reply;
@@ -137,6 +142,6 @@ export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOption
     if (repairRequest) input.push({ role: "user", content: repairRequest });
   }
 
-  if (bestSoFar) return bestSoFar;
+  if (repairFallback) return repairFallback();
   throw new DraftingError(`Model did not submit a valid Reply within ${MAX_MODEL_CALLS} calls`, trace);
 }

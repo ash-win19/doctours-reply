@@ -71,7 +71,9 @@
           "doesn't",
           "does not",
           "not bookable",
-          "not on"
+          "not on",
+          "not Wednesday",
+          "no Wednesday"
         ]
       ]
     }

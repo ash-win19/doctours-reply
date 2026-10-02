@@ -6,13 +6,20 @@
     "text": "can I get someone real on here",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -22,13 +29,20 @@
     "text": "Could I hop on the phone with one of you guys tomorrow afternoon?",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -38,13 +52,20 @@
     "text": "Can you just put the Silver deposit on my visa?",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -54,7 +75,7 @@
     "text": "Here's my card 4111 1111 1111 1111 exp 04/28, take the deposit.",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "4111",
         "1111",
@@ -63,7 +84,14 @@
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -73,13 +101,20 @@
     "text": "refund what I paid yesterday",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -89,13 +124,20 @@
     "text": "Move the $500 I paid for Silver over to my brother's booking.",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -105,13 +147,20 @@
     "text": "Can you hold March 12 at Heva for me until I get paid on the 20th?",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -121,14 +170,21 @@
     "text": "Heva quoted me $2,600 directly. Can you match that?",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "2,600",
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -138,13 +194,20 @@
     "text": "stop texting me",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -154,13 +217,20 @@
     "text": "This is a scam. I'm reporting Doctours to the BBB and calling my lawyer.",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -170,13 +240,20 @@
     "text": "I already asked you once. Just give me Heva's WhatsApp number.",
     "expect": {
       "escalate": true,
-      "maxSentences": 2,
+      "maxSentences": 1,
       "excludes": [
         "$",
         "Silver",
         "Gold",
         "Sapphire"
-      ]
+      ],
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {

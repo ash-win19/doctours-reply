@@ -23,7 +23,7 @@ function quoted(values: string[]): string {
 
 // Lowercases, drops "$" and digit-grouping commas, so "$3,000" and "3000 USD" read the same.
 function normalize(text: string): string {
-  return text.toLowerCase().replaceAll("$", "").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  return text.normalize("NFKC").replace(/[‘’]/g, "'").replace(/[–—]/g, "-").toLowerCase().replaceAll("$", "").replace(/(\d),(?=\d{3}\b)/g, "$1");
 }
 
 // Numbers match whole, so "500" doesn't match inside "4,500" or "500.50". Anything else is a substring.
@@ -41,7 +41,34 @@ export function checkReply(reply: Reply): CheckResult {
   const parsed = ReplySchema.safeParse(reply);
   if (!parsed.success) return { ok: false, detail: `does not match the Reply schema: ${z.prettifyError(parsed.error)}` };
   if (reply.templateId !== null) return { ok: false, detail: `templateId is ${JSON.stringify(reply.templateId)}, not null` };
+  if (!reply.response.trim()) return { ok: false, detail: "response is empty" };
+  if (reply.escalate ? !reply.escalationReason?.trim() : reply.escalationReason !== null) {
+    return { ok: false, detail: "escalationReason must be nonempty exactly when escalate is true" };
+  }
+  if (reply.escalate && (countSentences(reply.response) !== 1 || reply.response.length > 180)) {
+    return { ok: false, detail: "escalation must be one short sentence" };
+  }
+  if ((reply.attachmentUrls?.length ?? 0) > 3) return { ok: false, detail: "more than three attachments" };
+  if (!reply.shouldFollowUp && reply.followUpTiming !== null) return { ok: false, detail: "unexpected follow-up timing" };
+  const lines = reply.response.trim().split("\n");
+  const firstUrl = lines.findIndex((line) => /https?:\/\//.test(line));
+  if (firstUrl >= 0 && lines.slice(firstUrl).some((line) => !/^https?:\/\/\S+$/.test(line.trim()))) {
+    return { ok: false, detail: "URLs must be alone on the final lines" };
+  }
   return { ok: true, detail: "matches the Reply schema with a null templateId" };
+}
+
+export function checkAttachmentEvidence(reply: Reply, calls: ToolCallTrace[]): CheckResult {
+  const returned = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") for (const url of value.match(/https?:\/\/[^\s<>"']+/g) ?? []) returned.add(url);
+    else if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === "object") Object.values(value).forEach(visit);
+  };
+  // Agent summaries and submitted replies are not packet-tool evidence.
+  for (const call of calls) if (!call.isError && call.name.endsWith("Tool")) visit(call.output);
+  const missing = (reply.attachmentUrls ?? []).filter((url) => !returned.has(url));
+  return { ok: missing.length === 0, detail: missing.length ? `attachments not returned this turn: ${missing.join(", ")}` : "attachments came from this turn's tools" };
 }
 
 export function checkEscalate(reply: Reply, expected: boolean): CheckResult {

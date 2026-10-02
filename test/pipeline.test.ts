@@ -18,7 +18,7 @@ function options(create: CreateResponse) {
 test("card details escalate without a model call, and the digits never reach the trace", async () => {
   const { reply, trace } = await respond("Charge the deposit on my card ending in 4242 right now.", "default", options(noModel));
   assert.equal(reply.escalate, true);
-  assert.equal(reply.response, "I can't take card details. I'm getting a person for you.");
+  assert.equal(reply.response, "I'm getting a person for you.");
   assert.equal(reply.escalationReason, "Patient shared card details");
   const pipelineTrace = trace as PipelineTrace;
   assert.equal(pipelineTrace.path, "guard-escalation");
@@ -62,7 +62,7 @@ test("triage sees the message, the state card and the last four turns", async ()
   assert.match(text, /"refund what I paid yesterday"/);
 });
 
-test("when triage escalates, the Reply is the template with what we can't do", async () => {
+test("when triage escalates, the Reply is one fixed sentence", async () => {
   const model = scriptedModel([
     [
       functionCall("submitTriage", {
@@ -75,7 +75,7 @@ test("when triage escalates, the Reply is the template with what we can't do", a
     ],
   ]);
   const { reply, trace } = await respond("refund what I paid yesterday", "default", options(model.create));
-  assert.equal(reply.response, "I can't refund a payment. I'm getting a person for you.");
+  assert.equal(reply.response, "I'm getting a person for you.");
   assert.equal(reply.escalationReason, "Patient wants a refund");
   assert.deepEqual(reply.workingMemoryUpdates, { escalationFlags: "Patient wants a refund" });
   const pipelineTrace = trace as PipelineTrace;
@@ -219,7 +219,8 @@ test("in the default mode, a Reply from the baseline fallback is validated too",
     [functionCall("submitReply", FABRICATED)],
   ]);
   const { reply, trace } = await respond("How do I pay?", "default", options(model.create));
-  assert.equal(reply.response, "Pay using the link below.");
+  assert.equal(reply.response, "I'm getting a person for you.");
+  assert.equal(reply.escalate, true);
   assert.equal((trace as PipelineTrace).responder!.validation!.runs.length, 2);
 });
 
@@ -240,7 +241,7 @@ test("default-mode baseline fallback also removes attachments absent from this t
   const { reply, trace } = await respond("Is the consultation free?", "default", options(model.create));
   assert.equal((trace as PipelineTrace).path, "baseline");
   assert.equal(reply.attachmentUrls, null, "the response URL allowlist does not ground attachments");
-  assert.equal(reply.escalate, false);
+  assert.equal(reply.escalate, true);
 });
 
 test("a card-like run with an invalid checksum escalates before any model call", async () => {
@@ -287,7 +288,7 @@ test("default mode redacts historical card text and tool overrides without chang
   }
 });
 
-test("a repair can't change escalate, so the first version ships when it tries", async () => {
+test("baseline fallback permits escalation discovered during repair", async () => {
   const invented = { ...VALID_REPLY, response: "Silver is $9." };
   const flipped = { ...VALID_REPLY, escalate: true, escalationReason: "why", response: "I'm getting a person for you." };
   const model = scriptedModel([
@@ -296,9 +297,9 @@ test("a repair can't change escalate, so the first version ships when it tries",
     [functionCall("submitReply", flipped)],
   ]);
   const { reply, trace } = await respond("How much?", "default", options(model.create));
-  assert.equal(reply.escalate, false);
-  assert.equal(reply.response, "Silver is $9.");
-  assert.equal((trace as PipelineTrace).responder!.validation!.shipped, "first");
+  assert.equal(reply.escalate, true);
+  assert.equal(reply.response, "I'm getting a person for you.");
+  assert.equal((trace as PipelineTrace).responder!.validation!.shipped, "escalation");
 });
 
 test("the call-history subagent runs on the triage model, nested under the message's trace", async () => {

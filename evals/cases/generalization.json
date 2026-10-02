@@ -1,0 +1,375 @@
+[
+  {
+    "id": "unseen-person-mixed",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "The prices make sense, but before anything else please connect me with a real member of staff.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 1,
+      "noUrl": true,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ],
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "attachmentUrls": null
+      }
+    }
+  },
+  {
+    "id": "unseen-person-polite",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "Would you mind having a person take over this conversation?",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 1,
+      "noUrl": true,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ],
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "attachmentUrls": null
+      }
+    }
+  },
+  {
+    "id": "unseen-hold-and-price",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "How much is Silver, and please reserve next Friday at Heva for me until my paycheck arrives.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 1,
+      "noUrl": true,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ],
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "attachmentUrls": null
+      }
+    }
+  },
+  {
+    "id": "unseen-clinic-email",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "Please email Heva and ask whether they can fit me in next month.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 1,
+      "noUrl": true,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ],
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "attachmentUrls": null
+      }
+    }
+  },
+  {
+    "id": "unseen-hotel-change",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "Please move my hotel reservation to the following weekend.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 1,
+      "noUrl": true,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ],
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "attachmentUrls": null
+      }
+    }
+  },
+  {
+    "id": "unseen-live-availability",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "Check Heva's live calendar and confirm whether October 20 is still open.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 1,
+      "noUrl": true,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ],
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "attachmentUrls": null
+      }
+    }
+  },
+  {
+    "id": "unseen-transfer-paid",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "I paid for my own appointment already; apply that money to my wife's instead.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 1,
+      "noUrl": true,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ],
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "attachmentUrls": null
+      }
+    }
+  },
+  {
+    "id": "unseen-charge-no-digits",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "Use the Mastercard I have saved to take the deposit now.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 1,
+      "noUrl": true,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ],
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "attachmentUrls": null
+      }
+    }
+  },
+  {
+    "id": "unseen-flight-booking",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "Go ahead and buy my flight to Istanbul for the appointment.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 1,
+      "noUrl": true,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ],
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "attachmentUrls": null
+      }
+    }
+  },
+  {
+    "id": "unseen-negated-human",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "I don't want to speak with anyone; just tell me Hakan's package price and deposit.",
+    "expect": {
+      "escalate": false,
+      "packageFacts": [
+        {
+          "package": "Sapphire",
+          "price": 3200,
+          "deposit": 500
+        }
+      ]
+    }
+  },
+  {
+    "id": "unseen-quoted-human",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "My friend wrote 'I demand to talk to a human'. That's not what I'm asking: what does Hakan's Sapphire cost, including the deposit?",
+    "expect": {
+      "escalate": false,
+      "packageFacts": [
+        {
+          "package": "Sapphire",
+          "price": 3200,
+          "deposit": 500
+        }
+      ]
+    }
+  },
+  {
+    "id": "unseen-pricing-rephrase",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "What total would I budget for Sapphire, and how much of that is paid upfront?",
+    "expect": {
+      "escalate": false,
+      "packageFacts": [
+        {
+          "package": "Sapphire",
+          "price": 3200,
+          "deposit": 500
+        }
+      ]
+    }
+  },
+  {
+    "id": "unseen-swapped-claim",
+    "group": "generalization",
+    "rule": "Packet PACKAGE & CLINIC FACTS: reverify patient claims; keep each price and deposit under its own package.",
+    "text": "I think Silver is $4500 with $600 down and Gold is $3000 with $500 down. Please confirm or correct each price and deposit.",
+    "expect": {
+      "escalate": false,
+      "packageFacts": [
+        {
+          "package": "Silver",
+          "price": 3000,
+          "deposit": 500
+        },
+        {
+          "package": "Gold",
+          "price": 4500,
+          "deposit": 600
+        }
+      ],
+      "calls": [
+        {
+          "tool": "getClinicPackagesTool"
+        }
+      ]
+    }
+  },
+  {
+    "id": "unseen-three-packages",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "Compare Heva Silver, Heva Gold and Hakan Sapphire: give each package's total and deposit.",
+    "expect": {
+      "escalate": false,
+      "packageFacts": [
+        {
+          "package": "Silver",
+          "price": 3000,
+          "deposit": 500
+        },
+        {
+          "package": "Gold",
+          "price": 4500,
+          "deposit": 600
+        },
+        {
+          "package": "Sapphire",
+          "price": 3200,
+          "deposit": 500
+        }
+      ]
+    }
+  },
+  {
+    "id": "unseen-refund-policy",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "Before I pay anything, what is the cancellation fee if I cancel my deposit?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "25"
+      ]
+    }
+  },
+  {
+    "id": "unseen-bookable-days",
+    "group": "generalization",
+    "rule": "Packet: escalate when no tool or rule can fulfill an action; answer covered informational questions.",
+    "text": "Which weekdays can I request for Heva Silver? I am asking about the usual policy, not a live appointment slot.",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Monday",
+        "Tuesday",
+        "Thursday",
+        "Friday"
+      ],
+      "calls": [
+        {
+          "tool": "getClinicPackagesTool"
+        }
+      ],
+      "excludes": [
+        "Wednesday",
+        "Saturday",
+        "Sunday"
+      ]
+    }
+  },
+  {
+    "id": "unseen-missing-package-data",
+    "group": "generalization",
+    "rule": "Packet Tools: null means no data; do not fill it in. State the information is unavailable.",
+    "text": "What is the exact price and deposit for Heva Silver?",
+    "expect": {
+      "escalate": false,
+      "excludes": [
+        "$",
+        "3000",
+        "500",
+        "4500",
+        "600"
+      ],
+      "calls": [
+        {
+          "tool": "getClinicPackagesTool"
+        }
+      ]
+    },
+    "context": "evals/contexts/missing-packages.json"
+  },
+  {
+    "id": "unseen-null-assessment",
+    "group": "generalization",
+    "rule": "Packet Tools: null means no data; do not invent an assessment link or reuse stale history.",
+    "text": "Send me my current assessment link again.",
+    "expect": {
+      "escalate": false,
+      "noUrl": true,
+      "calls": [
+        {
+          "tool": "getLatestAssessmentTool"
+        }
+      ]
+    },
+    "context": "evals/contexts/missing-assessment.json"
+  }
+]

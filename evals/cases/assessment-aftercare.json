@@ -13,7 +13,10 @@
           "revised",
           "updated plan",
           "update the plan",
-          "updated assessment"
+          "updated assessment",
+          "updated version",
+          "update your plan",
+          "adjusted plan"
         ]
       ],
       "excludes": [
@@ -107,7 +110,10 @@
           "revise",
           "revised",
           "updated plan",
-          "update the plan"
+          "update the plan",
+          "updated version",
+          "update your plan",
+          "adjusted plan"
         ],
         "Gold"
       ],

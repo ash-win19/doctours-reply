@@ -25,17 +25,21 @@ export interface RunnerDeps {
   responderModel: string;
   triageModel: string;
   promptCache?: boolean;
+  concurrency?: number;
   traceRoot: string;
   log: (line: string) => void;
 }
 
 function traceFileNames(messages: HumanMessage[]): string[] {
-  const used = new Map<string, number>();
+  const used = new Set<string>();
   return messages.map(({ id }) => {
-    const base = id.replace(/[^\w.-]/g, "_") || "message";
-    const count = (used.get(base) ?? 0) + 1;
-    used.set(base, count);
-    return `${count === 1 ? base : `${base}-${count}`}.json`;
+    // Bound the name for filesystem limits; reserve case-insensitively for macOS/Windows too.
+    const base = id.replace(/[^\w.-]/g, "_").slice(0, 160) || "message";
+    let file = `${base}.json`;
+    let suffix = 2;
+    while (used.has(file.toLowerCase())) file = `${base}-${suffix++}.json`;
+    used.add(file.toLowerCase());
+    return file;
   });
 }
 
@@ -53,6 +57,10 @@ export interface RunOutput {
 }
 
 export async function runMessages(messages: RunMessage[], mode: Mode, deps: RunnerDeps): Promise<RunOutput> {
+  const concurrency = deps.concurrency ?? MAX_CONCURRENCY;
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > MAX_CONCURRENCY) {
+    throw new SetupError(`REPLY_CONCURRENCY must be an integer from 1 to ${MAX_CONCURRENCY}`);
+  }
   // An ISO timestamp with ":" swapped for "-" so it works as a directory name everywhere.
   const runId = new Date().toISOString().replaceAll(":", "-");
   const traceDir = join(deps.traceRoot, runId);
@@ -98,7 +106,7 @@ export async function runMessages(messages: RunMessage[], mode: Mode, deps: Runn
       await runOne(next++);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENCY, messages.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(concurrency, messages.length) }, worker));
 
   deps.log(`Wrote traces to ${traceDir}`);
   return { runId, results };

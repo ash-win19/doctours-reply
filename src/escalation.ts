@@ -1,22 +1,14 @@
 import type { Reply } from "./reply.ts";
 
+export const VALIDATION_FAILED = "Could not produce a grounded reply after repair";
+
 export const DRAFTING_FAILED = "Could not draft a reply";
 
-// The model supplies at most a short verb phrase. As a second safety after redaction, a phrase holding digits
-// is dropped, so the sentence falls back to "I'm getting a person for you."
-function tidyCannotDo(cannotDo: string | null): string | null {
-  if (!cannotDo || /\d/.test(cannotDo)) return null;
-  const phrase = cannotDo.replace(/\s+/g, " ").trim().replace(/[.!?,;:\s]+$/, "");
-  if (!/[a-z]/i.test(phrase)) return null;
-  // "Hold a date" becomes "hold a date", but a name like "PayPal" keeps its case.
-  return /^[A-Z][a-z]*\b/.test(phrase) ? phrase[0].toLowerCase() + phrase.slice(1) : phrase;
-}
-
-// ADR 0002: the Escalation sentence comes from a fixed template, so it can't answer a sales question.
-export function escalationReply(reason: string, cannotDo: string | null): Reply {
-  const phrase = tidyCannotDo(cannotDo);
+// Code owns the entire sentence: model text cannot add sales content, links, or extra sentences.
+export function escalationReply(reason: string, _cannotDo: string | null): Reply {
+  reason = reason.replace(/\s+/g, " ").trim().slice(0, 200) || "Needs an Operator";
   return {
-    response: phrase ? `I can't ${phrase}. I'm getting a person for you.` : "I'm getting a person for you.",
+    response: "I'm getting a person for you.",
     escalate: true,
     escalationReason: reason,
     templateId: null,

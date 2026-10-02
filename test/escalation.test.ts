@@ -18,9 +18,9 @@ test("an Escalation with nothing we can't do is one sentence", () => {
   });
 });
 
-test("an Escalation names what we can't do from the template", () => {
+test("an unsupported action gets the same fixed one-sentence Escalation", () => {
   const reply = escalationReply("Patient asked us to charge a card", "charge a card");
-  assert.equal(reply.response, "I can't charge a card. I'm getting a person for you.");
+  assert.equal(reply.response, "I'm getting a person for you.");
   assert.ok(ReplySchema.safeParse(reply).success);
 });
 
@@ -31,7 +31,20 @@ test("a phrase with digits or amounts is dropped, so digits never reach the Esca
   assert.equal(escalationReply("r", "charge a card for $500").response, "I'm getting a person for you.");
 });
 
-test("the phrase is tidied into the template", () => {
-  assert.equal(escalationReply("r", "  Hold a date for you.  ").response, "I can't hold a date for you. I'm getting a person for you.");
+test("model wording cannot expand the Escalation", () => {
+  assert.equal(escalationReply("r", "  Hold a date for you.  ").response, "I'm getting a person for you.");
   assert.equal(escalationReply("r", "").response, "I'm getting a person for you.");
+});
+
+
+test("arbitrary model phrases cannot add sales content, sentences, or links", () => {
+  for (const phrase of ["hold a date. Gold is great", "visit https://example.invalid", "charge " + "a ".repeat(200)]) {
+    assert.equal(escalationReply("Needs an Operator", phrase).response, "I'm getting a person for you.");
+  }
+});
+
+
+test("Escalation reasons are nonempty and bounded", () => {
+  assert.equal(escalationReply(" ", null).escalationReason, "Needs an Operator");
+  assert.equal(escalationReply("x".repeat(400), null).escalationReason?.length, 200);
 });

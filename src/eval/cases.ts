@@ -6,8 +6,10 @@ import { loadContext, type PatientContext } from "../patient-context.ts";
 import type { RunMessage } from "../runner.ts";
 import type { Reply } from "../reply.ts";
 import { parseJsonAs } from "../json.ts";
+import { checkPackageFacts } from "./package-facts.ts";
 import {
   checkCalls,
+  checkAttachmentEvidence,
   checkEscalate,
   checkExcludes,
   checkFields,
@@ -45,6 +47,11 @@ const ExpectSchema = z
     skills: z.object({ includes: z.array(z.string()).optional(), excludes: z.array(z.string()).optional() }).strict().optional(),
     // The first sentence mentions one of these.
     leadsWith: z.array(z.string()).min(1).optional(),
+    packageFacts: z.array(z.object({
+      package: z.string().min(1),
+      price: z.number().nonnegative(),
+      deposit: z.number().nonnegative(),
+    }).strict()).min(1).optional(),
   })
   .strict();
 
@@ -142,11 +149,13 @@ const CHECKS: { [Name in keyof Expect]-?: Check<NonNullable<Expect[Name]>> } = {
   // Baseline has no skill router. Its ordinary tool calls and Reply checks still apply.
   skills: (_reply, expected, observed) => observed.mode === "baseline" ? null : checkSkills(observed.skills, expected),
   leadsWith: checkLeadsWith,
+  packageFacts: checkPackageFacts,
 };
 
 // Every Reply must match the schema with a null templateId, whatever the case expects.
 export function scoreCase(evalCase: EvalCase, reply: Reply, observed: Observed = NOTHING_OBSERVED): CaseOutcome {
   const checks: NamedCheck[] = [{ name: "reply", ...checkReply(reply) }];
+  if (reply.attachmentUrls?.length) checks.push({ name: "attachmentEvidence", ...checkAttachmentEvidence(reply, observed.toolCalls) });
   for (const name of Object.keys(CHECKS) as (keyof Expect)[]) {
     const expected = evalCase.expect[name];
     if (expected === undefined) continue;

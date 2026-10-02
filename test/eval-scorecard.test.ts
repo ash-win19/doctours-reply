@@ -63,7 +63,7 @@ const run: RunOutput = {
   runId: "2026-10-02T10-00-00.000Z",
   results: [
     result(cases[0], { ...VALID_REPLY, response: "Yes, it's free." }, 3000, [modelCall(1000, 50, 200), modelCall(1100, 40, 0)]),
-    result(cases[1], { ...VALID_REPLY, escalate: true, response: "Getting a person." }, 1000, [modelCall(900, 30, 10)]),
+    result(cases[1], { ...VALID_REPLY, escalate: true, escalationReason: "Requested a person", response: "Getting a person." }, 1000, [modelCall(900, 30, 10)]),
     result(cases[2], { ...VALID_REPLY, escalate: false, response: "I can't do that." }, 2000, [modelCall(950, 20, 5)]),
   ],
 };
@@ -166,7 +166,7 @@ test("compare shows both runs side by side and the cases that flipped", () => {
       results: [
         result(cases[0], { ...VALID_REPLY, response: "No." }, 1000, [modelCall(400, 20, 0)]),
         run.results[1],
-        result(cases[2], { ...VALID_REPLY, escalate: true, response: "Getting a person." }, 1000, [modelCall(400, 20, 0)]),
+        result(cases[2], { ...VALID_REPLY, escalate: true, escalationReason: "Requested a person", response: "Getting a person." }, 1000, [modelCall(400, 20, 0)]),
       ],
     },
   });
@@ -225,4 +225,14 @@ test("a skills check reads the skills triage chose and any loaded mid-turn from 
   assert.equal(buildScorecard({ cases: [skillCase], run: skillRun, mode: "default", model: "fake-model" }).cases[0].passed, true);
   const noSkills: RunOutput = { runId: run.runId, results: [{ ...skillRun.results[0], trace: trace([]) }] };
   assert.equal(buildScorecard({ cases: [skillCase], run: noSkills, mode: "default", model: "fake-model" }).cases[0].passed, false);
+});
+
+
+test("a validation failure cannot pass as an expected human handoff", () => {
+  const reply: Reply = { ...VALID_REPLY, response: "I'm getting a person for you.", escalate: true,
+    escalationReason: "Could not produce a grounded reply after repair" };
+  const one = buildScorecard({ cases: [cases[1]], run: { runId: "r", results: [result(cases[1], reply, 1, [])] }, mode: "default", model: "fake" });
+  assert.equal(one.totals.passed, 0);
+  assert.equal(one.cases[0].checks[0].name, "drafted");
+  assert.deepEqual(one.cases[0].reply, reply);
 });

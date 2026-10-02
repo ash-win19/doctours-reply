@@ -111,15 +111,16 @@ test("escalate mid-turn returns the Escalation template Reply", async () => {
   assert.equal(trace.toolCalls[0].name, "escalate");
 });
 
-test("code owns templateId, escalate and escalationReason on a submitted Reply", async () => {
+test("a submitted escalation is normalized and ends the turn", async () => {
   const { result } = run(
     [],
     [[functionCall("submitReply", { ...VALID_REPLY, templateId: "tpl", escalate: true, escalationReason: "why" })]],
   );
   const { reply } = await result;
   assert.equal(reply.templateId, null);
-  assert.equal(reply.escalate, false);
-  assert.equal(reply.escalationReason, null);
+  assert.equal(reply.escalate, true);
+  assert.equal(reply.escalationReason, "why");
+  assert.equal(reply.response, "I'm getting a person for you.");
 });
 
 test("write tools run and are traced with their arguments and results", async () => {
@@ -156,7 +157,8 @@ test("a fabricated payment link never ships, and its removal asks for a repair",
   const fabricated = { ...VALID_REPLY, response: "Pay the Silver deposit using the link below.\nhttps://www.doctours.com/payment/silver" };
   const { model, result } = run(["decision-funnel"], [[functionCall("submitReply", fabricated)], [functionCall("submitReply", fabricated)]]);
   const { reply, trace } = await result;
-  assert.equal(reply.response, "Pay the Silver deposit using the link below.");
+  assert.equal(reply.escalate, true);
+  assert.equal(reply.response, "I'm getting a person for you.");
   assert.deepEqual(trace.validation.runs[0].fixes, ["removed https://www.doctours.com/payment/silver, which no tool returned, and its line"]);
   assert.match(
     (inputItems(model.requests[1]).at(-1) as { content: string }).content,
@@ -239,21 +241,23 @@ test("a failing check gets one repair turn that lists the failures, and the repa
   );
 });
 
-test("after the repair, the version with fewer failures ships, and there is never a second repair", async () => {
+test("failed repair escalates instead of shipping the draft with fewer failures", async () => {
   const oneFailure = { ...VALID_REPLY, response: "Silver is $2,999." };
   const twoFailures = { ...VALID_REPLY, response: "Silver is $2,999. I'll get back to you on Gold." };
   const { model, result } = run([], [[functionCall("submitReply", oneFailure)], [functionCall("submitReply", twoFailures)]]);
   const { reply, trace } = await result;
-  assert.equal(reply.response, "Silver is $2,999.");
-  assert.equal(trace.validation.shipped, "first");
+  assert.equal(reply.escalate, true);
+  assert.equal(reply.response, "I'm getting a person for you.");
+  assert.equal(trace.validation.shipped, "escalation");
   assert.equal(model.requests.length, 2);
 });
 
-test("a repair that doesn't come back as a valid Reply ships the first version", async () => {
+test("a malformed repair escalates without releasing the invalid first draft", async () => {
   const invented = { ...VALID_REPLY, response: "Silver is $2,999." };
   const { result } = run([], [[functionCall("submitReply", invented)], [functionCall("submitReply", { response: 42 })]]);
   const { reply } = await result;
-  assert.equal(reply.response, "Silver is $2,999.");
+  assert.equal(reply.escalate, true);
+  assert.equal(reply.response, "I'm getting a person for you.");
 });
 
 test("repeated invalid attachments never ship, even when both drafts violate the limit", async () => {
@@ -267,12 +271,13 @@ test("repeated invalid attachments never ship, even when both drafts violate the
     [functionCall("submitReply", draft)],
   ]);
   const { reply, trace } = await result;
-  assert.deepEqual(reply.attachmentUrls, urls.slice(0, 3));
+  assert.equal(reply.attachmentUrls, null);
+  assert.equal(reply.escalate, true);
   assert.equal(trace.validation.repairRan, true);
   assert.equal(trace.validation.runs.length, 2);
 });
 
-test("an unsuccessful attachment repair can only ship the sanitized first draft", async () => {
+test("all unsuccessful attachment repair paths escalate", async () => {
   const draft = { ...VALID_REPLY, attachmentUrls: ["https://made.up/photo.jpg"] };
   const repairs: FakeFunctionCall[][][] = [
     [[functionCall("submitReply", { response: 42 })]],
@@ -284,7 +289,7 @@ test("an unsuccessful attachment repair can only ship the sanitized first draft"
     const { result } = run([], [[functionCall("submitReply", draft)], ...repair]);
     const { reply } = await result;
     assert.equal(reply.attachmentUrls, null);
-    assert.equal(reply.escalate, false);
+    assert.equal(reply.escalate, true);
   }
 });
 
@@ -306,21 +311,21 @@ test("attachment repair can fetch evidence and return grounded photos", async ()
 test("an Escalation from the escalate tool skips the validator", async () => {
   const { result } = run(["payments"], [[functionCall("escalate", { reason: "Refund", cannotDo: "refund a payment" })]]);
   const { reply, trace } = await result;
-  assert.equal(reply.response, "I can't refund a payment. I'm getting a person for you.");
+  assert.equal(reply.response, "I'm getting a person for you.");
   assert.deepEqual(trace.validation.runs, []);
 });
 
-test("an escalate tool call cannot change the decision during repair, even in the initial batch", async () => {
+test("an escalate tool call takes precedence during repair, including the initial batch", async () => {
   const first = { ...VALID_REPLY, response: "Silver is $9." };
   const submit = functionCall("submitReply", first);
   const escalate = functionCall("escalate", { reason: "Cannot repair", cannotDo: null });
   for (const turns of [[[submit], [escalate]], [[submit, escalate]]]) {
     const { result } = run([], turns);
     const { reply, trace } = await result;
-    assert.equal(reply.escalate, false);
-    assert.equal(reply.response, first.response);
-    assert.equal(trace.validation.shipped, "first");
-    assert.equal(trace.toolCalls.at(-1)?.isError, true);
+    assert.equal(reply.escalate, true);
+    assert.equal(reply.response, "I'm getting a person for you.");
+    assert.equal(trace.validation.shipped, "escalation");
+    assert.equal(trace.toolCalls.at(-1)?.isError, false);
   }
 });
 
@@ -430,4 +435,52 @@ test("an amount or URL in the call-history answer isn't evidence, so a Reply rep
   const { trace } = await result;
   assert.equal(trace.validation.repairRan, true);
   assert.match((inputItems(model.requests[3]).at(-1) as { content: string }).content, /\$2,600 isn't in this turn's tool results/);
+});
+
+
+test("an escalation terminates before any later sales reply or write tool", async () => {
+  const { model, result } = run(["decision-funnel"], [[
+    functionCall("escalate", { reason: "Needs an Operator", cannotDo: null }),
+    functionCall("submitReply", VALID_REPLY),
+    functionCall("updateUserClinicPreferencesTool", { clinicSelection: { selectedClinicId: HEVA } }),
+  ]]);
+  const { reply, trace } = await result;
+  assert.equal(reply.escalate, true);
+  assert.equal(model.requests.length, 1);
+  assert.deepEqual(trace.toolCalls.map(({ name }) => name), ["escalate"]);
+});
+
+test("a submitReply handoff during repair is honored", async () => {
+  const { result } = run([], [
+    [functionCall("submitReply", { ...VALID_REPLY, response: "Silver costs $999." })],
+    [functionCall("submitReply", { ...VALID_REPLY, escalate: true, escalationReason: "Cannot verify", response: "Silver costs $999." })],
+  ]);
+  const { reply, trace } = await result;
+  assert.equal(reply.escalate, true);
+  assert.equal(reply.response, "I'm getting a person for you.");
+  assert.equal(trace.validation.shipped, "escalation");
+});
+
+
+test("a handoff wins over a sales reply and write even when emitted last in the batch", async () => {
+  for (const handoff of [
+    functionCall("escalate", { reason: "Needs an Operator", cannotDo: null }),
+    functionCall("submitReply", { ...VALID_REPLY, escalate: true, escalationReason: "Needs an Operator" }),
+  ]) {
+    const { result } = run(["decision-funnel"], [[
+      functionCall("updateUserClinicPreferencesTool", { clinicSelection: { selectedClinicId: HEVA } }),
+      functionCall("submitReply", VALID_REPLY), handoff,
+    ]]);
+    const { reply, trace } = await result;
+    assert.equal(reply.escalate, true);
+    assert.ok(trace.toolCalls.every(({ name }) => name === "escalate"));
+  }
+});
+
+test("empty drafts cannot pass validation or ship after repair", async () => {
+  const empty = functionCall("submitReply", { ...VALID_REPLY, response: " " });
+  const { result } = run([], [[empty], [empty]]);
+  const { reply, trace } = await result;
+  assert.equal(reply.escalate, true);
+  assert.equal(trace.validation.shipped, "escalation");
 });

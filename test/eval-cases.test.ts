@@ -97,7 +97,7 @@ test("scores every check the case asks for, and only those", () => {
 });
 
 test("a case fails when any check fails", () => {
-  const reply = { ...VALID_REPLY, escalate: true, response: "I'm getting a person for you." };
+  const reply = { ...VALID_REPLY, escalate: true, escalationReason: "Requested a person", response: "I'm getting a person for you." };
   const outcome = scoreCase(baseCase, reply);
   assert.equal(outcome.passed, false);
   assert.deepEqual(
@@ -150,4 +150,25 @@ test("a fields check is scored against the Reply", () => {
   const evalCase = { ...baseCase, expect: { fields: { shouldFollowUp: true, followUpTiming: ["1 month"] } } };
   assert.equal(scoreCase(evalCase, { ...VALID_REPLY, shouldFollowUp: true, followUpTiming: "1 month" }).passed, true);
   assert.equal(scoreCase(evalCase, VALID_REPLY).passed, false);
+});
+
+
+test("weekday case rejects a fabricated seven-day schedule and missing package evidence", () => {
+  const cases = parseCases(readFileSync("evals/cases/generalization.json", "utf8"), "generalization");
+  const evalCase = cases.find(({ id }) => id === "unseen-bookable-days")!;
+  const bad = { ...VALID_REPLY, response: "Silver is bookable Monday, Tuesday, Wednesday, Thursday, Friday, Saturday and Sunday." };
+  assert.equal(scoreCase(evalCase, bad).passed, false);
+  const correct = { ...VALID_REPLY, response: "Silver can be requested Monday, Tuesday, Thursday and Friday." };
+  assert.equal(scoreCase(evalCase, correct).passed, false);
+  assert.equal(scoreCase(evalCase, correct, { skills: [], toolCalls: [{ name: "getClinicPackagesTool", input: {}, output: {}, isError: false }] }).passed, true);
+});
+
+
+test("valid revision and weekday paraphrases retain their meaning under evaluation", () => {
+  const revisions = parseCases(readFileSync("evals/cases/assessment-aftercare.json", "utf8"), "assessment-aftercare");
+  const revision = revisions.find(({ id }) => id === "assess-revision")!;
+  assert.equal(scoreCase(revision, { ...VALID_REPLY, response: "I'll have your hairline lowered a bit on the plan and send you the updated version." }).passed, true);
+  const packages = parseCases(readFileSync("evals/cases/clinic-packages.json", "utf8"), "clinic-packages");
+  const weekday = packages.find(({ id }) => id === "cp-silver-wednesday")!;
+  assert.equal(scoreCase(weekday, { ...VALID_REPLY, response: "No, Silver can be booked Monday, Tuesday, Thursday or Friday, but not Wednesday." }).passed, true);
 });

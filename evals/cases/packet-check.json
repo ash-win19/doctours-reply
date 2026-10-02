@@ -3,7 +3,7 @@
     "id": "heva-packages",
     "group": "clinic-packages",
     "rule": "Packet, Expected outputs: heva-packages must include package names, prices, deposits, Afro hair and the assessment URL. Packet, Output: a URL in the response is the last line.",
-    "text": "I'm leaning toward Heva. What packages do they have, and can I pay from the assessment? I have 4C curls — does Heva do afro hair?",
+    "text": "I'm leaning toward Heva. What packages do they have, and can I pay from the assessment? I have 4C curls \u2014 does Heva do afro hair?",
     "expect": {
       "escalate": false,
       "includes": [
@@ -15,7 +15,19 @@
         "$600",
         "afro"
       ],
-      "lastLineUrl": "https://www.doctours.com/assessment/c3d4e5f6-3333-4333-8333-333333333333"
+      "lastLineUrl": "https://www.doctours.com/assessment/c3d4e5f6-3333-4333-8333-333333333333",
+      "packageFacts": [
+        {
+          "package": "Silver",
+          "price": 3000,
+          "deposit": 500
+        },
+        {
+          "package": "Gold",
+          "price": 4500,
+          "deposit": 600
+        }
+      ]
     }
   },
   {
@@ -29,6 +41,13 @@
         "Sapphire",
         "3,200",
         "$500"
+      ],
+      "packageFacts": [
+        {
+          "package": "Sapphire",
+          "price": 3200,
+          "deposit": 500
+        }
       ]
     }
   },
@@ -66,7 +85,15 @@
         "package",
         "pricing",
         "cost"
-      ]
+      ],
+      "maxSentences": 1,
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   },
   {
@@ -86,7 +113,15 @@
         "package",
         "pricing",
         "cost"
-      ]
+      ],
+      "maxSentences": 1,
+      "noUrl": true,
+      "fields": {
+        "escalationReason": "*",
+        "shouldFollowUp": false,
+        "followUpTiming": null,
+        "attachmentUrls": null
+      }
     }
   }
 ]
