@@ -6,6 +6,7 @@ import type { Reply } from "../reply.ts";
 import {
   checkCalls,
   checkEscalate,
+  checkFields,
   checkExcludes,
   checkIncludes,
   checkLastLineUrl,
@@ -31,6 +32,10 @@ const ExpectSchema = z
     calls: z
       .array(z.object({ tool: z.string().min(1), argsInclude: z.array(z.string()).optional() }).strict())
       .min(1)
+      .optional(),
+    // Dotted paths into the Reply, such as "followUpTiming" or "workingMemoryUpdates.promisesMade".
+    fields: z
+      .record(z.string(), z.union([z.boolean(), z.number(), z.null(), z.string(), z.array(z.string()).min(1)]))
       .optional(),
   })
   .strict();
@@ -107,6 +112,7 @@ const CHECKS: { [Name in keyof Expect]-?: Check<NonNullable<Expect[Name]>> } = {
   maxSentences: checkMaxSentences,
   maxAttachments: checkMaxAttachments,
   calls: (_reply, expected, toolCalls) => checkCalls(toolCalls, expected),
+  fields: checkFields,
 };
 
 // Every Reply must match the schema with a null templateId, whatever the case expects.

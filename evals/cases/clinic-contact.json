@@ -1,0 +1,60 @@
+[
+  {
+    "id": "contact-website",
+    "group": "clinic-contact",
+    "rule": "Source, CLINIC WEBSITE: a first website ask gets the Doctours clinic page built from the tool's slug.",
+    "text": "What's Heva's website?",
+    "expect": {
+      "escalate": false,
+      "lastLineUrl": "https://www.doctours.com/clinic/heva",
+      "calls": [
+        {
+          "tool": "getAllClinicsTool"
+        }
+      ]
+    }
+  },
+  {
+    "id": "contact-link",
+    "group": "clinic-contact",
+    "rule": "Source, CLINIC WEBSITE: \"the link for {clinic}\" gets the Doctours clinic page.",
+    "text": "Can you send me the link for Dr. Hakan Clinic?",
+    "expect": {
+      "escalate": false,
+      "lastLineUrl": "https://www.doctours.com/clinic/dr-hakan"
+    }
+  },
+  {
+    "id": "contact-first-ask",
+    "group": "clinic-contact",
+    "rule": "Source, PACKAGE & CLINIC FACTS can they message the clinic: yes, but ask what they need first and give no contact details.",
+    "text": "Can I message Dr. Hakan Clinic directly?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "?"
+      ],
+      "noUrl": true,
+      "excludes": [
+        "+90",
+        "@"
+      ]
+    }
+  },
+  {
+    "id": "contact-mixed-afro",
+    "group": "clinic-contact",
+    "rule": "Source, PACKAGE & CLINIC FACTS: a mixed message needs clinic-contact and clinic-packages.",
+    "text": "Can I message Heva myself, and do they do afro hair?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "afro"
+      ],
+      "excludes": [
+        "+90",
+        "@"
+      ]
+    }
+  }
+]
