@@ -1,4 +1,4 @@
-import type { FunctionDeclaration } from "@google/genai";
+import type { FunctionTool } from "openai/resources/responses/responses";
 import { z } from "zod";
 import * as packet from "./packet-tools.ts";
 
@@ -110,11 +110,12 @@ function toParametersSchema(schema: z.ZodType): Record<string, unknown> {
   return jsonSchema;
 }
 
-export function toolDefinition(name: string, description: string, input: z.ZodType): FunctionDeclaration {
-  return { name, description, parametersJsonSchema: toParametersSchema(input) };
+// Not strict: strict mode needs every field required, and these schemas have optional fields.
+export function toolDefinition(name: string, description: string, input: z.ZodType): FunctionTool {
+  return { type: "function", name, description, parameters: toParametersSchema(input), strict: false };
 }
 
-export const TOOLS: FunctionDeclaration[] = Object.entries(SPECS).map(([name, toolSpec]) =>
+export const TOOLS: FunctionTool[] = Object.entries(SPECS).map(([name, toolSpec]) =>
   toolDefinition(name, toolSpec.description, toolSpec.input),
 );
 

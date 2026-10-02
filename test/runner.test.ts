@@ -3,29 +3,30 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Content, GenerateContentParameters } from "@google/genai";
+import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
 import { runMessages, MAX_CONCURRENCY, SetupError } from "../src/runner.ts";
 import { ReplySchema } from "../src/reply.ts";
-import type { GenerateContent } from "../src/responder.ts";
-import { VALID_REPLY, generation, functionCall } from "./fakes.ts";
+import type { CreateResponse } from "../src/responder.ts";
+import { VALID_REPLY, modelResponse, functionCall } from "./fakes.ts";
 
-function incomingText(params: GenerateContentParameters): string {
-  return (params.contents as Content[])[0].parts![0].text!.split("\n")[1];
+function incomingText(params: ResponseCreateParamsNonStreaming): string {
+  const [user] = params.input as ResponseInputItem[];
+  return (user as { content: string }).content.split("\n")[1];
 }
 
 // Answers each message by echoing its text back, after a delay that varies by message.
 function echoModel(delayMs: (text: string) => number) {
   let inFlight = 0;
   let peak = 0;
-  const generate: GenerateContent = async (params) => {
+  const create: CreateResponse = async (params) => {
     inFlight += 1;
     peak = Math.max(peak, inFlight);
     const text = incomingText(params);
     await new Promise((resolve) => setTimeout(resolve, delayMs(text)));
     inFlight -= 1;
-    return generation([functionCall("submitReply", { ...VALID_REPLY, response: text })]);
+    return modelResponse([functionCall("submitReply", { ...VALID_REPLY, response: text })]);
   };
-  return { generate, peak: () => peak };
+  return { create, peak: () => peak };
 }
 
 function setup() {
@@ -37,7 +38,7 @@ const inputs = Array.from({ length: 10 }, (_, index) => ({ id: `m${index}`, text
 
 test("returns one Reply per message, in input order", async () => {
   const model = echoModel((text) => 50 - Number(text.match(/\d+/)![0]) * 4);
-  const { results } = await runMessages(inputs, "baseline", { ...setup(), generate: model.generate, responderModel: "fake" });
+  const { results } = await runMessages(inputs, "baseline", { ...setup(), create: model.create, responderModel: "fake" });
   const replies = results.map((result) => result.reply);
   assert.deepEqual(
     replies.map((reply) => reply.response),
@@ -47,14 +48,14 @@ test("returns one Reply per message, in input order", async () => {
 
 test(`runs at most ${MAX_CONCURRENCY} messages at once`, async () => {
   const model = echoModel(() => 10);
-  await runMessages(inputs, "baseline", { ...setup(), generate: model.generate, responderModel: "fake" });
+  await runMessages(inputs, "baseline", { ...setup(), create: model.create, responderModel: "fake" });
   assert.equal(model.peak(), MAX_CONCURRENCY);
 });
 
 test("writes one trace file per message", async () => {
   const deps = setup();
   const model = echoModel(() => 1);
-  const output = await runMessages(inputs.slice(0, 2), "baseline", { ...deps, generate: model.generate, responderModel: "fake" });
+  const output = await runMessages(inputs.slice(0, 2), "baseline", { ...deps, create: model.create, responderModel: "fake" });
   const [runId] = readdirSync(deps.traceRoot);
   assert.equal(output.runId, runId);
   assert.deepEqual(output.results[0].input, inputs[0]);
@@ -80,17 +81,17 @@ test("message ids become safe, unique trace file names", async () => {
     { id: "same", text: "b" },
     { id: "same", text: "c" },
   ];
-  await runMessages(odd, "baseline", { ...deps, generate: model.generate, responderModel: "fake" });
+  await runMessages(odd, "baseline", { ...deps, create: model.create, responderModel: "fake" });
   const [runId] = readdirSync(deps.traceRoot);
   assert.deepEqual(readdirSync(join(deps.traceRoot, runId)).sort(), [".._escape.json", "same-2.json", "same.json"]);
 });
 
 test("a message that fails still gets a schema-valid escalation Reply", async () => {
   const deps = setup();
-  const generate: GenerateContent = async () => {
+  const create: CreateResponse = async () => {
     throw new Error("API down");
   };
-  const { results } = await runMessages(inputs.slice(0, 1), "baseline", { ...deps, generate, responderModel: "fake" });
+  const { results } = await runMessages(inputs.slice(0, 1), "baseline", { ...deps, create, responderModel: "fake" });
   const replies = results.map((result) => result.reply);
   assert.match(results[0].error!, /API down/);
   assert.equal(replies.length, 1);
@@ -103,32 +104,32 @@ test("a message that fails still gets a schema-valid escalation Reply", async ()
 });
 
 test("a setup error fails the whole run instead of escalating", async () => {
-  const generate: GenerateContent = async () => {
-    throw new SetupError("GEMINI_API_KEY is invalid");
+  const create: CreateResponse = async () => {
+    throw new SetupError("OPENAI_API_KEY is invalid");
   };
   await assert.rejects(
-    runMessages(inputs.slice(0, 2), "baseline", { ...setup(), generate, responderModel: "fake" }),
-    /GEMINI_API_KEY/,
+    runMessages(inputs.slice(0, 2), "baseline", { ...setup(), create, responderModel: "fake" }),
+    /OPENAI_API_KEY/,
   );
 });
 
 test("after a setup error no new messages start", async () => {
   let calls = 0;
-  const generate: GenerateContent = async () => {
+  const create: CreateResponse = async () => {
     calls += 1;
     if (calls === 1) throw new SetupError("bad key");
     await new Promise((resolve) => setTimeout(resolve, 10));
-    return generation([functionCall("submitReply", VALID_REPLY)]);
+    return modelResponse([functionCall("submitReply", VALID_REPLY)]);
   };
-  await assert.rejects(runMessages(inputs, "baseline", { ...setup(), generate, responderModel: "fake" }), /bad key/);
+  await assert.rejects(runMessages(inputs, "baseline", { ...setup(), create, responderModel: "fake" }), /bad key/);
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(calls, MAX_CONCURRENCY);
 });
 
 test("a failed message's trace keeps its model calls", async () => {
   const deps = setup();
-  const generate: GenerateContent = async () => generation([], "no tools");
-  await runMessages(inputs.slice(0, 1), "baseline", { ...deps, generate, responderModel: "fake" });
+  const create: CreateResponse = async () => modelResponse([], "no tools");
+  await runMessages(inputs.slice(0, 1), "baseline", { ...deps, create, responderModel: "fake" });
   const [runId] = readdirSync(deps.traceRoot);
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));
   assert.equal(trace.modelCalls.length, 1);

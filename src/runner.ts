@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Reply } from "./reply.ts";
-import { ResponderError, respondBaseline, type GenerateContent, type ResponderTrace } from "./responder.ts";
+import { ResponderError, respondBaseline, type CreateResponse, type ResponderTrace } from "./responder.ts";
 
 export const MAX_CONCURRENCY = 4;
 
@@ -21,7 +21,7 @@ export interface HumanMessage {
 }
 
 export interface RunnerDeps {
-  generate: GenerateContent;
+  create: CreateResponse;
   responderModel: string;
   traceRoot: string;
   log: (line: string) => void;
@@ -83,7 +83,7 @@ export async function runMessages(messages: HumanMessage[], mode: Mode, deps: Ru
     let trace: ResponderTrace | null = null;
     let error: string | null = null;
     try {
-      ({ reply, trace } = await respondBaseline(input.text, { generate: deps.generate, model: deps.responderModel }));
+      ({ reply, trace } = await respondBaseline(input.text, { create: deps.create, model: deps.responderModel }));
     } catch (caught) {
       if (caught instanceof SetupError) {
         setupFailed = true;

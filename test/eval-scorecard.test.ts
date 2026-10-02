@@ -31,12 +31,19 @@ const cases: EvalCase[] = [
   },
 ];
 
-function modelCall(prompt: number, output: number, thoughts: number): ModelCallTrace {
+// OpenAI's output_tokens already include reasoning, so the fake folds them in.
+function modelCall(prompt: number, output: number, reasoning: number): ModelCallTrace {
   return {
     model: "fake-model",
-    finishReason: "STOP",
+    status: "completed",
     latencyMs: 10,
-    usage: { promptTokenCount: prompt, candidatesTokenCount: output, thoughtsTokenCount: thoughts },
+    usage: {
+      input_tokens: prompt,
+      input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
+      output_tokens: output + reasoning,
+      output_tokens_details: { reasoning_tokens: reasoning },
+      total_tokens: prompt + output + reasoning,
+    },
   };
 }
 
@@ -104,12 +111,12 @@ test("pass rate per group", () => {
 test("a message the model never finished fails even if its checks would pass", () => {
   const failedRun: RunOutput = {
     runId: "r",
-    results: [result(cases[1], failedReply, 500, [], "Gemini 503: high demand")],
+    results: [result(cases[1], failedReply, 500, [], "OpenAI 500: server error")],
   };
   const failedCard = buildScorecard({ cases: [cases[1]], run: failedRun, mode: "baseline", model: "fake-model" });
   const [outcome] = failedCard.cases;
   assert.equal(outcome.passed, false);
-  assert.deepEqual(outcome.checks[0], { name: "drafted", ok: false, detail: "Gemini 503: high demand" });
+  assert.deepEqual(outcome.checks[0], { name: "drafted", ok: false, detail: "OpenAI 500: server error" });
 });
 
 test("the printed scorecard shows each case, its failing check and the totals", () => {
