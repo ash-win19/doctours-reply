@@ -7,12 +7,13 @@ Writes the Coordinator's Reply to a Patient's text message, or escalates to an O
 You need Node 22.9 or newer and an [OpenAI API key](https://platform.openai.com/api-keys). Replies come from `gpt-6.1-sol` through the Responses API.
 
 ```sh
-npm install
-echo "OPENAI_API_KEY=..." > .env   # or export it in your shell
-npm run respond -- messages.json > replies.json
+npm ci
+cp .env.example .env
+# Set OPENAI_API_KEY in .env using your editor, or export it in your shell.
+npm run --silent respond -- examples/packet-messages.json > replies.json
 ```
 
-`npm run respond` and `npm run eval` load `.env` when it exists. Node prints a note on stderr when it doesn't.
+`npm run --silent respond` and `npm run eval` load `.env` when it exists. Node prints a note on stderr when it doesn't.
 
 - Input is a JSON array of `{id, text}` messages, read from the file argument or from stdin when there is no file.
 - Output is a JSON array of `Reply` objects, one per message, in input order. It goes to stdout, or to `--out <file>`.
@@ -36,7 +37,7 @@ If a message can't be drafted, its Reply escalates ("I'm getting a person for yo
 Every Reply is written for one Patient. By default that is the packet's Patient, whose constants are in `src/context.ts`. `--context <file>` swaps in another one:
 
 ```sh
-npm run respond -- --context evals/contexts/lead.json messages.json
+npm run --silent respond -- --context evals/contexts/lead.json messages.json
 ```
 
 A context file is a JSON object with any of the packet constants' keys, such as `PIPELINE_STATUS`, `PATIENT_NAME`, `RECENT_MEDIA_CONVERSATION` or `CHAT_LIST`. `src/patient-context.ts` validates it against a schema of every key. A misspelled key or a wrong type stops the run. Any key the file leaves out takes the packet's value, with one exception: `COLLECTION_STATUS` describes the packet Patient, so when a file omits it, `loadContext` works out Intake item status once, from the name, procedure area and photos plus what working memory remembers (`patientName`, `procedureArea` and the ask counts).
@@ -200,7 +201,7 @@ Result files stay out of git, except the baseline below.
 | escalation | 1/2 (50%) |
 | **Total** | **2/5 (40%)** |
 
-Input tokens 536,458 (about 98% served from OpenAI's prompt cache), output tokens 1,599, median latency 14.0s per message. Every message re-sends the ~38k-token original prompt on each of its 1 to 4 model calls.
+The saved scorecard does not record cache-read tokens. Input tokens 536,458, output tokens 1,599, median latency 14.0s per message. Every message re-sends the ~38k-token original prompt on each of its 1 to 4 model calls.
 
 What the original prompt gets wrong:
 
