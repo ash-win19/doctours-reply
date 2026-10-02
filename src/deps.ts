@@ -20,6 +20,9 @@ export function defaultRunnerDeps(): RunnerDeps {
   if (!process.env.OPENAI_API_KEY) {
     throw new SetupError("Set OPENAI_API_KEY before running");
   }
+  if (process.env.PROMPT_CACHE && !["on", "off"].includes(process.env.PROMPT_CACHE)) {
+    throw new SetupError("PROMPT_CACHE must be on or off");
+  }
   // The SDK retries rate limits, server errors and network errors with exponential backoff and honors
   // retry-after. A hung call gives up after 3 minutes, so a stuck message escalates instead of stalling the run.
   const client = new OpenAI({ maxRetries: 3, timeout: 180_000 });
@@ -33,6 +36,7 @@ export function defaultRunnerDeps(): RunnerDeps {
     },
     responderModel: process.env.RESPONDER_MODEL ?? "gpt-6.1-sol",
     triageModel: process.env.TRIAGE_MODEL ?? "gpt-6-luna",
+    promptCache: process.env.PROMPT_CACHE !== "off",
     traceRoot: "traces",
     log,
   };

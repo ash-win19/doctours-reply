@@ -24,6 +24,7 @@ export interface RunnerDeps {
   create: CreateResponse;
   responderModel: string;
   triageModel: string;
+  promptCache?: boolean;
   traceRoot: string;
   log: (line: string) => void;
 }

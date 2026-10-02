@@ -28,6 +28,7 @@ export interface PipelineOptions {
   triageModel: string;
   // The Patient the message is from.
   context: PatientContext;
+  promptCache?: boolean;
 }
 
 // Which way a message went: escalated by a guard in code, escalated by triage, answered with skills,
@@ -121,7 +122,7 @@ export async function respond(
     trace.path = "skills";
     const { reply, trace: responderTrace } = await respondWithSkills(
       screening.redactedText,
-      { registry, chosen: decision.skills, patient: context, status, inputCardDigits, subagentModel: options.triageModel },
+      { registry, chosen: decision.skills, patient: context, status, inputCardDigits, subagentModel: options.triageModel, promptCache: options.promptCache },
       responderOptions,
     );
     trace.responder = detachCalls(responderTrace, trace);
@@ -142,6 +143,6 @@ export async function respond(
 export function skillsRun(trace: Trace | null): string[] {
   const responder = (trace as Partial<PipelineTrace> | null)?.responder;
   if (!responder || !("skills" in responder)) return [];
-  const { chosen, loaded } = responder.skills as SkillResponderTrace["skills"];
-  return [...chosen, ...loaded];
+  const { chosen, loaded, resolved } = responder.skills as SkillResponderTrace["skills"];
+  return [...new Set([...(resolved ?? chosen), ...loaded])];
 }

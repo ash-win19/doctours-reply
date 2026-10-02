@@ -5,7 +5,7 @@ import { DraftingError, tokenUsage, type CreateResponse } from "../src/model-cal
 import { SetupError } from "../src/errors.ts";
 import { loadSkillRegistry } from "../src/skills.ts";
 import { PACKET_CONTEXT, loadContext } from "../src/patient-context.ts";
-import { VALID_REPLY, firstUserText, functionCall, scriptedModel, triageDecision } from "./fakes.ts";
+import { VALID_REPLY, firstUserText, systemText, functionCall, scriptedModel, triageDecision } from "./fakes.ts";
 
 const noModel: CreateResponse = async () => {
   throw new Error("no model call expected");
@@ -71,7 +71,7 @@ test("when triage escalates, the Reply is the template with what we can't do", a
 test("triage sees every skill's id and description", async () => {
   const model = scriptedModel([[functionCall("submitTriage", triageDecision({ escalate: true }))]]);
   await respond("What does Heva cost?", "default", options(model.create));
-  const instructions = model.requests[0].instructions as string;
+  const instructions = systemText(model.requests[0]);
   for (const { id } of loadSkillRegistry().index()) assert.match(instructions, new RegExp(`- ${id}: `));
 });
 
@@ -83,7 +83,7 @@ test("a message that doesn't escalate is answered with the skills triage chose",
   const { reply, trace } = await respond("What does Dr. Hakan Clinic cost?", "default", options(model.create));
   assert.deepEqual(reply, VALID_REPLY);
   assert.equal(model.requests[1].model, "responder-model");
-  const system = model.requests[1].instructions as string;
+  const system = systemText(model.requests[1]);
   assert.match(system, /# PIPELINE STATUS: PRE_CLINICAL_SENT/);
   assert.match(system, /# SKILL: clinic-packages/);
   const pipelineTrace = trace as PipelineTrace;
@@ -92,13 +92,13 @@ test("a message that doesn't escalate is answered with the skills triage chose",
   assert.deepEqual(pipelineTrace.modelCalls.map((call) => call.step), ["triage", "responder"]);
   const responder = pipelineTrace.responder!;
   assert.ok("skills" in responder);
-  assert.deepEqual(responder.skills, { chosen: ["clinic-packages"], loaded: [] });
+  assert.deepEqual(responder.skills, { chosen: ["clinic-packages"], loaded: [], resolved: ["clinic-packages"] });
 });
 
 test("with no skills chosen, the responder runs on the core and the Pipeline Status module", async () => {
   const model = scriptedModel([[functionCall("submitTriage", triageDecision())], [functionCall("submitReply", VALID_REPLY)]]);
   const { trace } = await respond("thanks!", "default", options(model.create));
-  const system = model.requests[1].instructions as string;
+  const system = systemText(model.requests[1]);
   assert.match(system, /# PIPELINE STATUS: PRE_CLINICAL_SENT/);
   assert.doesNotMatch(system, /# SKILL:/);
   assert.equal((trace as PipelineTrace).path, "skills");
@@ -111,7 +111,7 @@ test("a skill that doesn't exist yet sends the message to the baseline responder
   ]);
   const { reply, trace } = await respond("Is the consultation free?", "default", options(model.create));
   assert.deepEqual(reply, VALID_REPLY);
-  assert.match(model.requests[1].instructions as string, /^# IDENTITY\nYou are a patient concierge/);
+  assert.match(systemText(model.requests[1]), /^# IDENTITY\nYou are a patient concierge/);
   const pipelineTrace = trace as PipelineTrace;
   assert.equal(pipelineTrace.path, "baseline");
   assert.equal(pipelineTrace.fallback?.to, "baseline");
@@ -155,7 +155,7 @@ test("baseline mode skips guards and triage", async () => {
   const { reply } = await respond("I demand to talk to a human", "baseline", options(model.create));
   assert.deepEqual(reply, VALID_REPLY);
   assert.equal(model.requests.length, 1);
-  assert.match(model.requests[0].instructions as string, /^# IDENTITY/);
+  assert.match(systemText(model.requests[0]), /^# IDENTITY/);
 });
 
 const leadPatient = loadContext("evals/contexts/lead.json");
@@ -169,7 +169,7 @@ test("a swapped context reaches triage, the core prompt, the Pipeline Status mod
   const { trace } = await respond("done", "default", { ...options(model.create), context: leadPatient });
   assert.match(firstUserText(model.requests[0]), /Pipeline Status: LEAD/);
   assert.match(firstUserText(model.requests[0]), /Intake items: area MISSING; name MISSING; photos MISSING/);
-  const system = model.requests[1].instructions as string;
+  const system = systemText(model.requests[1]);
   assert.match(system, /# PIPELINE STATUS: LEAD/);
   assert.match(system, /## Recent conversation\nNo messages yet\./);
   assert.match(firstUserText(model.requests[1]), /Triggering sender: \+15555550199/);
@@ -183,13 +183,13 @@ test("an unknown Pipeline Status is answered reactively with skills, not by the 
     context: { ...PACKET_CONTEXT, PIPELINE_STATUS: "SOMETHING_NEW" },
   });
   assert.equal((trace as PipelineTrace).path, "skills");
-  assert.match(model.requests[1].instructions as string, /answer reactively/);
+  assert.match(systemText(model.requests[1]), /answer reactively/);
 });
 
 test("baseline mode fills the original prompt and tools from a swapped context", async () => {
   const model = scriptedModel([[functionCall("getPatientImagesTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
   const { trace } = await respond("done", "baseline", { ...options(model.create), context: leadPatient });
-  assert.ok((model.requests[0].instructions as string).includes(leadPatient.PATIENT_SUMMARY));
+  assert.ok((systemText(model.requests[0])).includes(leadPatient.PATIENT_SUMMARY));
   assert.equal((trace.toolCalls![0].output as { hasImages: boolean }).hasImages, false);
 });
 

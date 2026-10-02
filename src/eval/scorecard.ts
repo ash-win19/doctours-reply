@@ -1,5 +1,5 @@
 import { tokenUsage } from "../model-calls.ts";
-import { skillsRun } from "../pipeline.ts";
+import { skillsRun, type PipelineTrace } from "../pipeline.ts";
 import type { RunOutput } from "../runner.ts";
 import { scoreCase, type EvalCase } from "./cases.ts";
 import type { NamedCheck } from "./checks.ts";
@@ -15,6 +15,11 @@ export interface CaseScore {
   inputTokens: number;
   outputTokens: number;
   wallTimeMs: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  skills?: string[];
+  fallbackToBaseline?: boolean;
+  repairRan?: boolean;
 }
 
 export interface Tally {
@@ -31,6 +36,15 @@ export interface Scorecard {
   cases: CaseScore[];
   groups: Record<string, Tally>;
   totals: Tally & { inputTokens: number; outputTokens: number; medianLatencyMs: number };
+  metrics?: {
+    medianInputTokens: number;
+    cachedInputTokens: number;
+    cacheWriteInputTokens: number;
+    medianSkillsLoaded: number;
+    fallbackMessages: number;
+    repairedMessages: number;
+  };
+  provenance?: { commit: string | null; dirty: boolean | null; suiteHash: string; promptCache: boolean };
 }
 
 export function median(values: number[]): number {
@@ -60,6 +74,9 @@ export function buildScorecard({
 }): Scorecard {
   const scores = cases.map((evalCase, index): CaseScore => {
     const { reply, trace, error, wallTimeMs } = run.results[index];
+    const pipeline = trace as Partial<PipelineTrace> | null;
+    const cachedInputTokens = sum((trace?.modelCalls ?? []).map(({ usage }) => usage?.input_tokens_details.cached_tokens ?? 0));
+    const cacheWriteInputTokens = sum((trace?.modelCalls ?? []).map(({ usage }) => usage?.input_tokens_details.cache_write_tokens ?? 0));
     // A fallback Reply is not the model's work, so the case fails however its checks would score.
     const { passed, checks } =
       error !== null
@@ -75,6 +92,11 @@ export function buildScorecard({
       escalate: reply.escalate,
       ...tokenUsage(trace),
       wallTimeMs,
+      cachedInputTokens,
+      cacheWriteInputTokens,
+      skills: skillsRun(trace),
+      fallbackToBaseline: mode === "default" && pipeline?.fallback?.to === "baseline",
+      repairRan: pipeline?.responder?.validation?.repairRan ?? false,
     };
   });
 
@@ -89,6 +111,14 @@ export function buildScorecard({
     model,
     cases: scores,
     groups,
+    metrics: {
+      medianInputTokens: median(scores.map(({ inputTokens }) => inputTokens)),
+      cachedInputTokens: sum(scores.map(({ cachedInputTokens }) => cachedInputTokens ?? 0)),
+      cacheWriteInputTokens: sum(scores.map(({ cacheWriteInputTokens }) => cacheWriteInputTokens ?? 0)),
+      medianSkillsLoaded: median(scores.map(({ skills }) => skills?.length ?? 0)),
+      fallbackMessages: scores.filter(({ fallbackToBaseline }) => fallbackToBaseline).length,
+      repairedMessages: scores.filter(({ repairRan }) => repairRan).length,
+    },
     totals: {
       ...tally(scores),
       inputTokens: sum(scores.map((score) => score.inputTokens)),
@@ -101,6 +131,8 @@ export function buildScorecard({
 const percent = (rate: number) => `${Math.round(rate * 100)}%`;
 const count = (value: number) => value.toLocaleString("en-US");
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+const recorded = (value: number | undefined) => value === undefined ? "not recorded" : count(value);
+const medianInput = (card: Scorecard) => card.metrics?.medianInputTokens ?? median(card.cases.map(({ inputTokens }) => inputTokens));
 
 function table(rows: string[][]): string {
   const widths = rows[0].map((_, column) => Math.max(...rows.map((row) => (row[column] ?? "").length)));
@@ -129,6 +161,12 @@ export function formatScorecard(card: Scorecard): string {
     table([
       ["Input tokens", count(card.totals.inputTokens)],
       ["Output tokens", count(card.totals.outputTokens)],
+      ["Median input tokens", count(medianInput(card))],
+      ["Cached input tokens", recorded(card.metrics?.cachedInputTokens)],
+      ["Cache-write input tokens", recorded(card.metrics?.cacheWriteInputTokens)],
+      ["Median skills loaded", recorded(card.metrics?.medianSkillsLoaded)],
+      ["Baseline fallback messages", recorded(card.metrics?.fallbackMessages)],
+      ["Repair messages", recorded(card.metrics?.repairedMessages)],
       ["Median latency", `${seconds(card.totals.medianLatencyMs)} per message`],
     ]),
   ].join("\n");
@@ -138,6 +176,9 @@ export function compareScorecards(before: Scorecard, after: Scorecard): string {
   const ids = (card: Scorecard) => card.cases.map(({ id }) => id).sort();
   if (JSON.stringify(ids(before)) !== JSON.stringify(ids(after))) {
     throw new Error("Compare runs with the same case ids. Select matching case files for both runs.");
+  }
+  if (before.provenance && after.provenance && before.provenance.suiteHash !== after.provenance.suiteHash) {
+    throw new Error("The eval cases or Patient contexts changed between these runs. Run both modes on the same suite.");
   }
   const groups = [...new Set([...Object.keys(before.groups), ...Object.keys(after.groups)])].sort();
   const rate = (card: Scorecard, group: string) => (card.groups[group] ? percent(card.groups[group].passRate) : "-");
@@ -159,6 +200,10 @@ export function compareScorecards(before: Scorecard, after: Scorecard): string {
       ["Total", percent(before.totals.passRate), percent(after.totals.passRate)],
       ["Input tokens", count(before.totals.inputTokens), count(after.totals.inputTokens)],
       ["Output tokens", count(before.totals.outputTokens), count(after.totals.outputTokens)],
+      ["Median input tokens", count(medianInput(before)), count(medianInput(after))],
+      ["Cached input tokens", recorded(before.metrics?.cachedInputTokens), recorded(after.metrics?.cachedInputTokens)],
+      ["Cache-write input tokens", recorded(before.metrics?.cacheWriteInputTokens), recorded(after.metrics?.cacheWriteInputTokens)],
+      ["Baseline fallback messages", recorded(before.metrics?.fallbackMessages), recorded(after.metrics?.fallbackMessages)],
       ["Median latency", seconds(before.totals.medianLatencyMs), seconds(after.totals.medianLatencyMs)],
     ]),
     "",

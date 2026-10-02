@@ -25,6 +25,8 @@ Rate limits (429), server errors and network errors are retried by the OpenAI SD
 
 `RESPONDER_MODEL` sets the OpenAI model that writes Replies and defaults to `gpt-6.1-sol`. Use `gpt-6-astra` for the strongest replies or `gpt-6-luna` for the cheapest. `TRIAGE_MODEL` sets the small model that triages each message and defaults to `gpt-6-luna`.
 
+Default-mode skill Replies use explicit prompt-cache endpoints on the core and Pipeline Status module. `PROMPT_CACHE=off` restores the original request shape while leaving provider automatic caching enabled. See [caching and trim notes](docs/optimization.md) for limits and pending measurements.
+
 The run ID is the run's start time as an ISO timestamp, with `:` swapped for `-` so it works as a directory name.
 
 If a message can't be drafted, its Reply escalates ("I'm getting a person for you.", with `escalationReason` "Could not draft a reply"), so every message still gets exactly one Reply. Setup problems such as a missing or rejected key or an unknown model stop the whole run with a non-zero exit instead.
@@ -158,7 +160,7 @@ npm run eval        # runs every eval case through the real model
 `npm run eval -- --mode <mode>` runs the cases in `evals/cases/` through the same runner the CLI uses, scores each Reply, and prints a scorecard to stderr: pass or fail per case with the failing check, the pass rate per group, total input and output tokens, and the median latency per message. Output tokens include reasoning tokens. A message the model never finished fails as `drafted`, even if its fallback Reply happens to match.
 
 - `--cases <name>` runs one case file, such as `--cases packet-check`. Repeat it for more.
-- Every run saves its scorecard to `evals/results/<runId>.json`, with the same run ID as its traces.
+- New scorecards include median input tokens, cache reads and writes, loaded-skill counts, fallback and repair counts, and commit/suite provenance. Every run saves its scorecard to `evals/results/<runId>.json`, with the same run ID as its traces.
 - `npm run eval -- --compare <runA> <runB>` prints the two runs side by side, plus the cases that were fixed or broke. Both runs must contain the same case ids. Run `--cases packet-check` separately for comparison with the historical five-case baseline. A run is named by its run ID or by a results file path.
 
 A case is one Patient message plus deterministic checks:

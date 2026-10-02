@@ -103,6 +103,30 @@ test("totals pass rate, tokens and median latency per message", () => {
   });
 });
 
+test("records median input tokens and cache usage across every model call exactly once", () => {
+  const messages = structuredClone(run);
+  const calls = messages.results[0].trace!.modelCalls;
+  calls[0].step = "triage";
+  calls[0].usage!.input_tokens_details.cached_tokens = 800;
+  calls[0].usage!.input_tokens_details.cache_write_tokens = 100;
+  calls[1].step = "callHistory";
+  calls[1].usage!.input_tokens_details.cached_tokens = 900;
+  calls[1].usage!.input_tokens_details.cache_write_tokens = 200;
+  const measured = buildScorecard({ cases, run: messages, mode: "default", model: "fake" });
+  assert.equal(measured.metrics!.medianInputTokens, 950);
+  assert.equal(measured.metrics!.cachedInputTokens, 1700);
+  assert.equal(measured.metrics!.cacheWriteInputTokens, 300);
+  assert.equal(measured.cases[0].cachedInputTokens, 1700);
+  assert.match(formatScorecard(measured), /Cached input tokens\s+1,700/);
+});
+
+test("comparison does not pretend old runs recorded cache metrics", () => {
+  const older = { ...card, metrics: undefined };
+  assert.match(compareScorecards(older, card), /Cached input tokens\s+not recorded\s+0/);
+  const provenance = { commit: "rev", dirty: false, suiteHash: "suite", promptCache: true };
+  assert.throws(() => compareScorecards({ ...card, provenance }, { ...card, provenance: { ...provenance, suiteHash: "changed" } }), /contexts changed/);
+});
+
 test("pass rate per group", () => {
   assert.deepEqual(card.groups, {
     consultation: { cases: 1, passed: 1, passRate: 1 },

@@ -8,7 +8,7 @@ import { escalationReply } from "../src/escalation.ts";
 import { PACKET_CONTEXT as context } from "../src/patient-context.ts";
 import {
   VALID_REPLY,
-  firstUserText,
+  firstUserText, systemText,
   functionCall,
   functionOutputs,
   inputItems,
@@ -34,7 +34,7 @@ function lastOutput(request: ResponseCreateParamsNonStreaming): string {
 test("the system prompt is the core, the Pipeline Status module, then the chosen skills with what they require", async () => {
   const { model, result } = run(["decision-funnel"], [[functionCall("submitReply", VALID_REPLY)]]);
   await result;
-  const system = model.requests[0].instructions as string;
+  const system = systemText(model.requests[0]);
   const order = ["# IDENTITY", "# PIPELINE STATUS: PRE_CLINICAL_SENT", "# SKILL: clinic-packages", "# SKILL: decision-funnel"].map(
     (heading) => system.indexOf(heading),
   );
@@ -77,7 +77,7 @@ test("loadSkill returns the skill's text and adds its tools to the next request"
   assert.match(lastOutput(model.requests[1]), /# SKILL: payments\n[\s\S]*FINANCING GEOGRAPHY/);
   assert.ok(!toolNames(model.requests[0]).includes("issuePromoCodeTool"));
   assert.ok(toolNames(model.requests[1]).includes("issuePromoCodeTool"));
-  assert.deepEqual(trace.skills, { chosen: ["clinic-packages"], loaded: ["payments"] });
+  assert.deepEqual(trace.skills, { chosen: ["clinic-packages"], loaded: ["payments"], resolved: ["clinic-packages"] });
 });
 
 test("loadSkill brings in what the skill requires, and nothing already loaded", async () => {
