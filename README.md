@@ -8,9 +8,11 @@ You need Node 22 or newer and an [OpenAI API key](https://platform.openai.com/ap
 
 ```sh
 npm install
-export OPENAI_API_KEY=...
-npm run respond -- --mode baseline messages.json > replies.json
+echo "OPENAI_API_KEY=..." > .env   # or export it in your shell
+npm run respond -- messages.json > replies.json
 ```
+
+`npm run respond` and `npm run eval` load `.env` when it exists. Node prints a note on stderr when it doesn't.
 
 - Input is a JSON array of `{id, text}` messages, read from the file argument or from stdin when there is no file.
 - Output is a JSON array of `Reply` objects, one per message, in input order. It goes to stdout, or to `--out <file>`.
@@ -20,13 +22,28 @@ npm run respond -- --mode baseline messages.json > replies.json
 
 Rate limits (429) and server errors are retried by the OpenAI SDK with backoff, honoring `retry-after`, up to 6 times. An account that is out of credit (`insufficient_quota`) stops the run instead of retrying.
 
-`RESPONDER_MODEL` sets the OpenAI model and defaults to `gpt-6.1-sol`. Use `gpt-6-astra` for the strongest replies or `gpt-6-luna` for the cheapest. `TRIAGE_MODEL` defaults to `gpt-6-luna` and is unused until a mode with triage lands.
+`RESPONDER_MODEL` sets the OpenAI model that writes Replies and defaults to `gpt-6.1-sol`. Use `gpt-6-astra` for the strongest replies or `gpt-6-luna` for the cheapest. `TRIAGE_MODEL` sets the small model that triages each message and defaults to `gpt-6-luna`.
 
 The run ID is the run's start time as an ISO timestamp, with `:` swapped for `-` so it works as a directory name.
 
-If a message can't be drafted, its Reply escalates ("I can't answer this one myself. I'm getting a person for you."), so every message still gets exactly one Reply. Setup problems such as a missing or rejected key or an unknown model stop the whole run with a non-zero exit instead.
+If a message can't be drafted, its Reply escalates ("I'm getting a person for you.", with `escalationReason` "Could not draft a reply"), so every message still gets exactly one Reply. Setup problems such as a missing or rejected key or an unknown model stop the whole run with a non-zero exit instead.
 
 ## Modes
+
+`--mode` picks how Replies are drafted. It defaults to `default`.
+
+### default
+
+Escalation is settled before any Reply is drafted (ADR 0001, ADR 0002):
+
+1. **Guards, in code.** Card numbers (13 to 19 digits, with optional spaces or dashes) and phrases like "card ending in 4242" are replaced with "[card number]" before triage, a trace or any model sees the text. Card details or an explicit request for a person ("talk to a human", "real person", "someone call me") escalate with no model call.
+2. **Triage.** One `TRIAGE_MODEL` call reads the redacted message, a state card built from the Patient context, the last 4 chat turns and the escalation policy in `prompts/triage/`, and submits `{ escalate, escalationReason, cannotDo, skills, intent }`.
+3. **Escalation.** Code renders the Reply from the ADR 0002 template: "I can't {cannotDo}. I'm getting a person for you.", or "I'm getting a person for you." with no `cannotDo`. Digits and amounts are stripped from `cannotDo`. The Reply sets `escalationReason`, `intent` "escalate to a person" and `workingMemoryUpdates.escalationFlags`.
+4. **Everything else** goes to the baseline responder for now.
+
+The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation` or `baseline`), and every model call tagged with its step.
+
+### baseline
 
 `baseline` runs the packet's original system prompt, filled as the packet's Flow section describes, with the packet's 14 functions as the only tools. It's the "before" that later changes are measured against.
 
@@ -63,6 +80,8 @@ A case is one Patient message plus deterministic checks:
 ```
 
 `group` is the skill the case exercises, or `escalation`. `rule` cites the source rule it tests. The checks are `escalate` (exact match), `includes` and `excludes` (substrings, ignoring case; an `includes` entry can be a list of alternatives, any one of which is enough), `lastLineUrl` (the Reply's last line is exactly that URL), `noUrl`, `maxSentences` (split on `.`, `?` and `!` after removing URLs) and `maxAttachments`. Numbers match however they're written, as whole numbers: `"$3,000"` matches "3000 USD" but `"$500"` doesn't match inside "$4,500". Every case also checks that the Reply matches the schema with a null `templateId`. An unknown check name is rejected, so a typo can't pass silently.
+
+`evals/cases/escalation.json` covers both sides of every line in ADR 0002: 11 messages that must escalate, including paraphrases triage has to catch, and 7 that must be answered.
 
 `evals/cases/packet-check.json` holds the packet's five messages and only the checks the packet says must match. Nothing outside the eval harness reads it. A unit test fails if any source file or prompt mentions it.
 

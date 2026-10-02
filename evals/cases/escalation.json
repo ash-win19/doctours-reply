@@ -1,0 +1,253 @@
+[
+  {
+    "id": "esc-person-paraphrase",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: asking for a person, in any wording.",
+    "text": "can I get someone real on here",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-call-request",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: asking for a person, including asking for a call.",
+    "text": "Could I hop on the phone with one of you guys tomorrow afternoon?",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-charge-card",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: charging a card or taking card details.",
+    "text": "Can you just put the Silver deposit on my visa?",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-card-number",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: charging a card or taking card details. Packet: never repeat a card number.",
+    "text": "Here's my card 4111 1111 1111 1111 exp 04/28, take the deposit.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "4111",
+        "1111",
+        "04/28",
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-refund",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: refunding money already paid.",
+    "text": "refund what I paid yesterday",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-move-money",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: moving money already paid.",
+    "text": "Move the $500 I paid for Silver over to my brother's booking.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-hold-date",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: holding a date.",
+    "text": "Can you hold March 12 at Heva for me until I get paid on the 20th?",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-match-quote",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: asking us to match a quote a clinic gave directly.",
+    "text": "Heva quoted me $2,600 directly. Can you match that?",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "2,600",
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-opt-out",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: opting out of messages, because a person has to flag the account.",
+    "text": "stop texting me",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-legal-threat",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: complaints that threaten a report or legal action.",
+    "text": "This is a scam. I'm reporting Doctours to the BBB and calling my lawyer.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "esc-second-contact",
+    "group": "escalation",
+    "rule": "ADR 0002, Escalate: a second request for a clinic's phone, email or WhatsApp.",
+    "text": "I already asked you once. Just give me Heva's WhatsApp number.",
+    "expect": {
+      "escalate": true,
+      "maxSentences": 2,
+      "excludes": [
+        "$",
+        "Silver",
+        "Gold",
+        "Sapphire"
+      ]
+    }
+  },
+  {
+    "id": "ans-payment-link",
+    "group": "escalation",
+    "rule": "ADR 0002, Answer: a Payment link or Checkout link request.",
+    "text": "Send me the payment link for Heva's Silver package.",
+    "expect": {
+      "escalate": false,
+      "lastLineUrl": "https://www.doctours.com/payment/44444444-4444-4444-8444-444444444441"
+    }
+  },
+  {
+    "id": "ans-direct-quote-shared",
+    "group": "escalation",
+    "rule": "ADR 0002, Answer: a clinic's direct quote shared without asking us to match it.",
+    "text": "FYI Heva quoted me $2,600 when I emailed them directly.",
+    "expect": {
+      "escalate": false
+    }
+  },
+  {
+    "id": "ans-claimed-promo",
+    "group": "escalation",
+    "rule": "ADR 0002, Answer: a claimed discount or someone else's promo code, by giving the current price only.",
+    "text": "My friend got $200 off Heva with a promo code. Can I use it too?",
+    "expect": {
+      "escalate": false
+    }
+  },
+  {
+    "id": "ans-creator",
+    "group": "escalation",
+    "rule": "ADR 0002, Answer: creator or partnership requests, by giving Molly's email.",
+    "text": "I'm a content creator with 40k followers. Do you do collabs?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "molly@doctours.com"
+      ]
+    }
+  },
+  {
+    "id": "ans-deposit-paid-to-clinic",
+    "group": "escalation",
+    "rule": "ADR 0002, Answer: a Deposit already paid straight to a clinic.",
+    "text": "I already paid Heva a $300 deposit directly. What happens now?",
+    "expect": {
+      "escalate": false
+    }
+  },
+  {
+    "id": "ans-angry-question",
+    "group": "escalation",
+    "rule": "ADR 0002, Answer: an angry message that still asks an answerable question.",
+    "text": "This is taking forever and honestly I'm annoyed. How much is Dr. Hakan's package?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Sapphire",
+        "3,200"
+      ]
+    }
+  },
+  {
+    "id": "ans-first-contact-clinic",
+    "group": "escalation",
+    "rule": "ADR 0002, Answer: a first request to contact a clinic.",
+    "text": "Can I message Heva directly?",
+    "expect": {
+      "escalate": false
+    }
+  }
+]

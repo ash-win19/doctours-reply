@@ -28,3 +28,25 @@ export function buildBaselineUserMessage(humanMessage: string): string {
     RECENT_CONVERSATION_SUMMARY: context.RECENT_CONVERSATION_SUMMARY,
   });
 }
+
+export interface SkillSummary {
+  id: string;
+  description: string;
+}
+
+export function buildTriageSystemPrompt(skillIndex: SkillSummary[]): string {
+  return fill(readPrompt("triage/system.md"), {
+    ESCALATION_POLICY: readPrompt("triage/escalation-policy.md"),
+    SKILL_INDEX: skillIndex.length
+      ? skillIndex.map(({ id, description }) => `- ${id}: ${description}`).join("\n")
+      : "No skills yet.",
+  });
+}
+
+export function buildTriageUserMessage(input: { message: string; stateCard: string; recentTurns: string[] }): string {
+  return fill(readPrompt("triage/user.md"), {
+    STATE_CARD: input.stateCard,
+    RECENT_TURNS: input.recentTurns.length ? input.recentTurns.join("\n") : "No messages yet.",
+    MESSAGE: input.message,
+  });
+}

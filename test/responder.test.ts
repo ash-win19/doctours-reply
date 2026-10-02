@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
-import { respondBaseline, tokenUsage, MAX_TOOL_ROUNDS, ResponderError } from "../src/responder.ts";
+import { respondBaseline, tokenUsage, MAX_TOOL_ROUNDS, ResponderError, type ResponderTrace } from "../src/responder.ts";
 import { VALID_REPLY, scriptedModel, functionCall } from "./fakes.ts";
 
 const options = { model: "fake-model" };
@@ -111,7 +111,7 @@ test("throws with the partial trace when the model never submits a valid Reply",
     assert.ok(error instanceof ResponderError);
     assert.match(error.message, /submit/i);
     assert.equal(error.trace.modelCalls.length, 10);
-    assert.equal(error.trace.toolCalls.length, 10);
+    assert.equal((error.trace as ResponderTrace).toolCalls.length, 10);
     return true;
   });
 });
@@ -121,6 +121,7 @@ test("traces usage and latency for every model call", async () => {
   const { trace } = await respondBaseline("hi", { ...options, create: model.create });
   assert.equal(trace.modelCalls.length, 2);
   for (const call of trace.modelCalls) {
+    assert.equal(call.step, "responder");
     assert.equal(call.model, "fake-model");
     assert.equal(call.usage?.input_tokens, 100);
     assert.equal(call.usage?.input_tokens_details.cached_tokens, 80);

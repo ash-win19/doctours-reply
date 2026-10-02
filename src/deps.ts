@@ -1,10 +1,8 @@
 import OpenAI from "openai";
-import { SetupError, type RunnerDeps } from "./runner.ts";
+import { SetupError } from "./errors.ts";
+import type { RunnerDeps } from "./runner.ts";
 
 export const log = (line: string) => process.stderr.write(`${line}\n`);
-
-// Read now so the setting is in one place. Baseline mode has no triage step, so nothing uses it yet.
-export const TRIAGE_MODEL = process.env.TRIAGE_MODEL ?? "gpt-6-luna";
 
 // Errors every message would hit the same way, so the run stops instead of escalating each one.
 const SETUP_ERROR_STATUSES = new Set([400, 401, 403, 404]);
@@ -33,6 +31,7 @@ export function defaultRunnerDeps(): RunnerDeps {
       }
     },
     responderModel: process.env.RESPONDER_MODEL ?? "gpt-6.1-sol",
+    triageModel: process.env.TRIAGE_MODEL ?? "gpt-6-luna",
     traceRoot: "traces",
     log,
   };

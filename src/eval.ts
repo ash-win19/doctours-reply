@@ -4,7 +4,8 @@ import { loadCases } from "./eval/cases.ts";
 import { loadScorecard, saveScorecard } from "./eval/results.ts";
 import { buildScorecard, compareScorecards, formatScorecard } from "./eval/scorecard.ts";
 import { defaultRunnerDeps, log } from "./deps.ts";
-import { parseMode, runMessages, type Mode } from "./runner.ts";
+import { parseMode, type Mode } from "./pipeline.ts";
+import { runMessages } from "./runner.ts";
 
 export type EvalArgs =
   | { kind: "run"; mode: Mode; caseFiles: string[] }
@@ -14,7 +15,7 @@ export function parseEvalArgs(argv: string[]): EvalArgs {
   const { values, positionals } = parseArgs({
     args: argv,
     options: {
-      mode: { type: "string", default: "baseline" },
+      mode: { type: "string" },
       cases: { type: "string", multiple: true, default: [] },
       compare: { type: "boolean", default: false },
     },
@@ -43,7 +44,8 @@ async function main(): Promise<void> {
     args.mode,
     deps,
   );
-  const card = buildScorecard({ cases, run, mode: args.mode, model: deps.responderModel });
+  const model = args.mode === "baseline" ? deps.responderModel : `${deps.responderModel}, triage ${deps.triageModel}`;
+  const card = buildScorecard({ cases, run, mode: args.mode, model });
   log(`\n${formatScorecard(card)}`);
   log(`\nSaved results to ${saveScorecard(card)}`);
   process.exitCode = card.totals.passed === card.totals.cases ? 0 : 1;

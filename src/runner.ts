@@ -1,19 +1,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { SetupError } from "./errors.ts";
+import { DRAFTING_FAILED, escalationReply } from "./escalation.ts";
+import { redactCardNumbers } from "./guards.ts";
+import { respond, type Mode } from "./pipeline.ts";
 import type { Reply } from "./reply.ts";
-import { ResponderError, respondBaseline, type CreateResponse, type ResponderTrace } from "./responder.ts";
+import { ResponderError, type CreateResponse, type Trace } from "./responder.ts";
 
 export const MAX_CONCURRENCY = 4;
-
-export const MODES = ["baseline"] as const;
-export type Mode = (typeof MODES)[number];
-
-export function parseMode(value: string | undefined): Mode {
-  if (!MODES.includes(value as Mode)) {
-    throw new Error(`--mode must be one of: ${MODES.join(", ")}`);
-  }
-  return value as Mode;
-}
 
 export interface HumanMessage {
   id: string;
@@ -23,26 +17,10 @@ export interface HumanMessage {
 export interface RunnerDeps {
   create: CreateResponse;
   responderModel: string;
+  triageModel: string;
   traceRoot: string;
   log: (line: string) => void;
 }
-
-// A problem with the setup, such as a missing key or unknown model, that every message would hit.
-export class SetupError extends Error {}
-
-// Every message still gets exactly one Reply when drafting fails, so a person takes over.
-const DRAFTING_FAILED_REPLY: Reply = {
-  response: "I can't answer this one myself. I'm getting a person for you.",
-  escalate: true,
-  escalationReason: "Failed to draft a reply",
-  templateId: null,
-  intent: "escalate after drafting failure",
-  shouldFollowUp: false,
-  followUpTiming: null,
-  attachmentUrls: null,
-  highEngagement: false,
-  workingMemoryUpdates: null,
-};
 
 function traceFileNames(messages: HumanMessage[]): string[] {
   const used = new Map<string, number>();
@@ -57,7 +35,7 @@ function traceFileNames(messages: HumanMessage[]): string[] {
 export interface MessageResult {
   input: HumanMessage;
   reply: Reply;
-  trace: ResponderTrace | null;
+  trace: Trace | null;
   error: string | null;
   wallTimeMs: number;
 }
@@ -80,10 +58,10 @@ export async function runMessages(messages: HumanMessage[], mode: Mode, deps: Ru
     const input = messages[index];
     const started = performance.now();
     let reply: Reply;
-    let trace: ResponderTrace | null = null;
+    let trace: Trace | null = null;
     let error: string | null = null;
     try {
-      ({ reply, trace } = await respondBaseline(input.text, { create: deps.create, model: deps.responderModel }));
+      ({ reply, trace } = await respond(input.text, mode, deps));
     } catch (caught) {
       if (caught instanceof SetupError) {
         setupFailed = true;
@@ -91,13 +69,16 @@ export async function runMessages(messages: HumanMessage[], mode: Mode, deps: Ru
       }
       if (caught instanceof ResponderError) trace = caught.trace;
       error = caught instanceof Error ? caught.message : String(caught);
-      reply = DRAFTING_FAILED_REPLY;
+      // Every message still gets exactly one Reply when drafting fails, so a person takes over.
+      reply = escalationReply(DRAFTING_FAILED, null);
     }
     const wallTimeMs = Math.round(performance.now() - started);
     results[index] = { input, reply, trace, error, wallTimeMs };
+    // Card digits never reach a trace file.
+    const tracedInput = { ...input, text: redactCardNumbers(input.text).text };
     writeFileSync(
       join(traceDir, fileNames[index]),
-      JSON.stringify({ input, mode, ...trace, reply, error, wallTimeMs }, null, 2),
+      JSON.stringify({ input: tracedInput, mode, ...trace, reply, error, wallTimeMs }, null, 2),
     );
     deps.log(
       `${error ? "FAILED" : "ok"} ${input.id} in ${wallTimeMs}ms${error ? `: ${error}` : ""}${reply.escalate ? " (escalated)" : ""}`,

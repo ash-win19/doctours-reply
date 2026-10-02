@@ -34,6 +34,7 @@ const cases: EvalCase[] = [
 // OpenAI's output_tokens already include reasoning, so the fake folds them in.
 function modelCall(prompt: number, output: number, reasoning: number): ModelCallTrace {
   return {
+    step: "responder",
     model: "fake-model",
     status: "completed",
     latencyMs: 10,

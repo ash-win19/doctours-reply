@@ -4,7 +4,8 @@ import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
-import { runMessages, MAX_CONCURRENCY, SetupError } from "../src/runner.ts";
+import { runMessages, MAX_CONCURRENCY } from "../src/runner.ts";
+import { SetupError } from "../src/errors.ts";
 import { ReplySchema } from "../src/reply.ts";
 import type { CreateResponse } from "../src/responder.ts";
 import { VALID_REPLY, modelResponse, functionCall } from "./fakes.ts";
@@ -31,7 +32,7 @@ function echoModel(delayMs: (text: string) => number) {
 
 function setup() {
   const traceRoot = mkdtempSync(join(tmpdir(), "traces-"));
-  return { traceRoot, log: () => {} };
+  return { traceRoot, log: () => {}, triageModel: "fake-triage" };
 }
 
 const inputs = Array.from({ length: 10 }, (_, index) => ({ id: `m${index}`, text: `message ${index}` }));
@@ -97,6 +98,8 @@ test("a message that fails still gets a schema-valid escalation Reply", async ()
   assert.equal(replies.length, 1);
   assert.ok(ReplySchema.safeParse(replies[0]).success);
   assert.equal(replies[0].escalate, true);
+  assert.equal(replies[0].response, "I'm getting a person for you.");
+  assert.equal(replies[0].escalationReason, "Could not draft a reply");
   assert.equal(replies[0].templateId, null);
   const [runId] = readdirSync(deps.traceRoot);
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));
@@ -134,4 +137,42 @@ test("a failed message's trace keeps its model calls", async () => {
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));
   assert.equal(trace.modelCalls.length, 1);
   assert.match(trace.error, /without calling a tool/);
+});
+
+// Triage lets every message through, then the responder echoes the message text back.
+const passThroughModel: CreateResponse = async (params) => {
+  const tools = (params.tools ?? []).map((tool) => (tool.type === "function" ? tool.name : ""));
+  if (tools.includes("submitTriage")) {
+    return modelResponse([
+      functionCall("submitTriage", { escalate: false, escalationReason: null, cannotDo: null, skills: [], intent: "ask" }),
+    ]);
+  }
+  return modelResponse([functionCall("submitReply", { ...VALID_REPLY, response: incomingText(params) })]);
+};
+
+test("default mode runs guards and triage before the responder", async () => {
+  const deps = setup();
+  const messages = [
+    { id: "price", text: "What does Heva cost?" },
+    { id: "human", text: "I demand to talk to a human" },
+  ];
+  const { results } = await runMessages(messages, "default", { ...deps, create: passThroughModel, responderModel: "fake" });
+  assert.equal(results[0].reply.response, '"What does Heva cost?"');
+  assert.equal(results[1].reply.response, "I'm getting a person for you.");
+  const [runId] = readdirSync(deps.traceRoot);
+  const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "price.json"), "utf8"));
+  assert.equal(trace.mode, "default");
+  assert.equal(trace.path, "baseline");
+  assert.deepEqual(trace.modelCalls.map((call: { step: string }) => call.step), ["triage", "responder"]);
+});
+
+test("card numbers never reach a trace file", async () => {
+  const deps = setup();
+  const card = [{ id: "card", text: "Put it on 4111 1111 1111 1111 please" }];
+  const { results } = await runMessages(card, "default", { ...deps, create: passThroughModel, responderModel: "fake" });
+  assert.equal(results[0].reply.escalate, true);
+  const [runId] = readdirSync(deps.traceRoot);
+  const raw = readFileSync(join(deps.traceRoot, runId, "card.json"), "utf8");
+  assert.doesNotMatch(raw, /4111/);
+  assert.equal(JSON.parse(raw).input.text, "Put it on [card number] please");
 });

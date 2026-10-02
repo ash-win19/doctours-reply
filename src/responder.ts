@@ -25,6 +25,8 @@ export interface ResponderOptions {
 }
 
 export interface ModelCallTrace {
+  // Which step of the pipeline made the call, such as "triage" or "responder".
+  step: string;
   model: string;
   status: Response["status"] | null;
   usage: ResponseUsage | null;
@@ -38,16 +40,20 @@ export interface ToolCallTrace {
   isError: boolean;
 }
 
-export interface ResponderTrace {
+// Every trace lists its model calls, so tokens can be totalled whatever produced it.
+export interface Trace {
+  modelCalls: ModelCallTrace[];
+}
+
+export interface ResponderTrace extends Trace {
   system: string;
   userMessage: string;
-  modelCalls: ModelCallTrace[];
   toolCalls: ToolCallTrace[];
   finalOutput: unknown;
 }
 
 // OpenAI's output_tokens already include reasoning tokens.
-export function tokenUsage(trace: ResponderTrace | null): { inputTokens: number; outputTokens: number } {
+export function tokenUsage(trace: Trace | null): { inputTokens: number; outputTokens: number } {
   let inputTokens = 0;
   let outputTokens = 0;
   for (const { usage } of trace?.modelCalls ?? []) {
@@ -61,7 +67,7 @@ export function tokenUsage(trace: ResponderTrace | null): { inputTokens: number;
 export class ResponderError extends Error {
   constructor(
     message: string,
-    readonly trace: ResponderTrace,
+    readonly trace: Trace,
   ) {
     super(message);
   }
@@ -75,12 +81,35 @@ const submitReplyTool = toolDefinition(
 
 type ParsedArguments = { ok: true; value: unknown } | { ok: false; error: string };
 
-function parseArguments(raw: string): ParsedArguments {
+export function parseArguments(raw: string): ParsedArguments {
   try {
     return { ok: true, value: JSON.parse(raw) };
   } catch {
     return { ok: false, error: `Tool arguments are not valid JSON: ${raw}` };
   }
+}
+
+// Makes one model call and records its usage and latency under the given step.
+export async function tracedCall(
+  create: CreateResponse,
+  params: ResponseCreateParamsNonStreaming,
+  modelCalls: ModelCallTrace[],
+  step: string,
+): Promise<Response> {
+  const started = performance.now();
+  const response = await create(params);
+  modelCalls.push({
+    step,
+    model: response.model,
+    status: response.status ?? null,
+    usage: response.usage ?? null,
+    latencyMs: Math.round(performance.now() - started),
+  });
+  return response;
+}
+
+export function functionCalls(response: Response): ResponseFunctionToolCall[] {
+  return response.output.filter((item): item is ResponseFunctionToolCall => item.type === "function_call");
 }
 
 export async function respondBaseline(
@@ -95,34 +124,30 @@ export async function respondBaseline(
   for (let call = 0; call < MAX_MODEL_CALLS; call++) {
     const toolChoice: ToolChoiceOptions | ToolChoiceFunction =
       call < MAX_TOOL_ROUNDS ? "required" : { type: "function", name: SUBMIT_REPLY };
-    const started = performance.now();
-    const response = await create({
-      model,
-      instructions: system,
-      input,
-      tools: [...TOOLS, submitReplyTool],
-      tool_choice: toolChoice,
-      // Reasoning counts against this budget, so it leaves room for both.
-      max_output_tokens: 16000,
-    });
-    trace.modelCalls.push({
-      model: response.model,
-      status: response.status ?? null,
-      usage: response.usage ?? null,
-      latencyMs: Math.round(performance.now() - started),
-    });
-
-    const functionCalls = response.output.filter(
-      (item): item is ResponseFunctionToolCall => item.type === "function_call",
+    const response = await tracedCall(
+      create,
+      {
+        model,
+        instructions: system,
+        input,
+        tools: [...TOOLS, submitReplyTool],
+        tool_choice: toolChoice,
+        // Reasoning counts against this budget, so it leaves room for both.
+        max_output_tokens: 16000,
+      },
+      trace.modelCalls,
+      "responder",
     );
-    if (functionCalls.length === 0) {
+
+    const calls = functionCalls(response);
+    if (calls.length === 0) {
       const reason = response.incomplete_details?.reason ?? response.status ?? "unknown";
       throw new ResponderError(`Model stopped without calling a tool (${reason})`, trace);
     }
     // Reasoning models need their reasoning items back alongside the calls they made.
     input.push(...(response.output as ResponseInputItem[]));
 
-    for (const functionCall of functionCalls) {
+    for (const functionCall of calls) {
       const { name } = functionCall;
       const args = parseArguments(functionCall.arguments);
       let output: string;

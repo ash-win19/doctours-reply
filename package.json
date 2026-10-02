@@ -7,8 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "respond": "tsx src/cli.ts",
-    "eval": "tsx src/eval.ts",
+    "respond": "node --env-file-if-exists=.env --import tsx src/cli.ts",
+    "eval": "node --env-file-if-exists=.env --import tsx src/eval.ts",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

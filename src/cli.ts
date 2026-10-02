@@ -3,7 +3,8 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defaultRunnerDeps, log } from "./deps.ts";
-import { parseMode, runMessages, type HumanMessage, type Mode } from "./runner.ts";
+import { parseMode, type Mode } from "./pipeline.ts";
+import { runMessages, type HumanMessage } from "./runner.ts";
 
 const MessagesSchema = z.array(z.object({ id: z.string(), text: z.string() }));
 
