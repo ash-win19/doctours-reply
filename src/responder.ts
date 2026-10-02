@@ -1,5 +1,5 @@
 import { asDraftingError, type ModelOptions } from "./model-calls.ts";
-import { PACKET_CONTEXT, type PatientContext } from "./patient-context.ts";
+import type { PatientContext } from "./patient-context.ts";
 import { buildBaselineSystemPrompt, buildBaselineUserMessage } from "./prompt.ts";
 import type { Reply } from "./reply.ts";
 import { runToolLoop, type ResponderTrace } from "./tool-loop.ts";
@@ -9,7 +9,7 @@ import { TOOLS, runTool } from "./tools.ts";
 export async function respondBaseline(
   humanMessage: string,
   options: ModelOptions,
-  context: PatientContext = PACKET_CONTEXT,
+  context: PatientContext,
 ): Promise<{ reply: Reply; trace: ResponderTrace }> {
   const system = buildBaselineSystemPrompt(context);
   const userMessage = buildBaselineUserMessage(humanMessage, context);

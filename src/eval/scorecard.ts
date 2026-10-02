@@ -1,4 +1,5 @@
 import { tokenUsage } from "../model-calls.ts";
+import { skillsRun } from "../pipeline.ts";
 import type { RunOutput } from "../runner.ts";
 import { scoreCase, type EvalCase } from "./cases.ts";
 import type { NamedCheck } from "./checks.ts";
@@ -63,7 +64,7 @@ export function buildScorecard({
     const { passed, checks } =
       error !== null
         ? { passed: false, checks: [{ name: "drafted", ok: false, detail: error }] }
-        : scoreCase(evalCase, reply, trace?.toolCalls ?? []);
+        : scoreCase(evalCase, reply, { toolCalls: trace?.toolCalls ?? [], skills: skillsRun(trace) });
     return {
       id: evalCase.id,
       group: evalCase.group,

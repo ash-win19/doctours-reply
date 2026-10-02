@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   checkCalls,
+  checkSkills,
   checkEscalate,
   checkReply,
   checkExcludes,
@@ -123,4 +124,19 @@ test("a calls check fails on a missing tool, missing argument text, or a call th
   assert.match(missingTool.detail, /getPaymentLinkTool/);
   assert.equal(checkCalls(calls, [{ tool: "updateUserClinicPreferencesTool", argsInclude: ["abc-123"] }]).ok, false);
   assert.equal(checkCalls(calls, [{ tool: "updateUserClinicPreferencesTool" }]).ok, false);
+});
+
+test("a skills check passes when every included skill ran and no excluded one did", () => {
+  assert.equal(checkSkills(["clinic-packages", "intake-photos"], { includes: ["intake-photos"] }).ok, true);
+  assert.equal(checkSkills(["clinic-packages"], { excludes: ["intake-photos"] }).ok, true);
+  assert.equal(checkSkills([], { excludes: ["intake-photos"] }).ok, true);
+});
+
+test("a skills check names a missing or unwanted skill", () => {
+  const missing = checkSkills(["clinic-packages"], { includes: ["intake-photos"] });
+  assert.equal(missing.ok, false);
+  assert.match(missing.detail, /intake-photos didn't run/);
+  const unwanted = checkSkills(["clinic-packages", "intake-photos"], { excludes: ["intake-photos"] });
+  assert.equal(unwanted.ok, false);
+  assert.match(unwanted.detail, /intake-photos ran/);
 });

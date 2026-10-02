@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildStateCard, collectionStatus, recentTurns } from "../src/state-card.ts";
-import * as context from "../src/context.ts";
+import { buildStateCard, recentTurns } from "../src/state-card.ts";
+import { PACKET_CONTEXT as context } from "../src/patient-context.ts";
 
 test("the packet Patient's state card", () => {
   assert.equal(
@@ -54,40 +54,6 @@ test("recent turns are the last four messages, oldest first", () => {
   ]);
 });
 
-const newPatient = {
-  ...context,
-  COLLECTION_STATUS: null,
-  PATIENT_NAME: null,
-  PROCEDURE_AREA: null,
-  HAS_PATIENT_IMAGES: false,
-  PATIENT_IMAGE_COUNT: 0,
-  WORKING_MEMORY: "{}",
-};
-
-test("without a Collection Status, Intake item status is worked out from the other fields", () => {
-  assert.equal(
-    collectionStatus(newPatient),
-    "area MISSING; name MISSING; photos MISSING. Asks so far -- area 0, name 0, photos 0 (budget 1 each). Next collection anchor: area.",
-  );
-  assert.match(buildStateCard(newPatient), /^Intake items: area MISSING; name MISSING; photos MISSING\./m);
-});
-
-test("the next anchor skips items already known or already asked", () => {
-  const asked = {
-    ...newPatient,
-    PROCEDURE_AREA: "crown",
-    WORKING_MEMORY: JSON.stringify({ collectionState: { areaAskCount: 1, nameAskCount: 1, photoAskCount: 0 } }),
-  };
-  assert.equal(
-    collectionStatus(asked),
-    "area crown; name MISSING; photos MISSING. Asks so far -- area 1, name 1, photos 0 (budget 1 each). Next collection anchor: photos.",
-  );
-  const allAsked = { ...asked, WORKING_MEMORY: JSON.stringify({ collectionState: { areaAskCount: 1, nameAskCount: 1, photoAskCount: 1 } }) };
-  assert.match(collectionStatus(allAsked), /Every missing item has been asked -- add NO anchor\.$/);
-  const done = { ...newPatient, PATIENT_NAME: "Sam", PROCEDURE_AREA: "crown", HAS_PATIENT_IMAGES: true, PATIENT_IMAGE_COUNT: 5 };
-  assert.match(collectionStatus(done), /^area crown; name on file; photos received\. .*Everything is collected -- add NO anchor\.$/);
-});
-
-test("a Collection Status the context gives is used as it is", () => {
-  assert.equal(collectionStatus(context), context.COLLECTION_STATUS);
+test("the state card shows the context's Collection Status as it is", () => {
+  assert.match(buildStateCard({ ...context, COLLECTION_STATUS: "area crown; name MISSING" }), /^Intake items: area crown; name MISSING$/m);
 });

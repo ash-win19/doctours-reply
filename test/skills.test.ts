@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadSkillRegistry, parseSkill, statusModule } from "../src/skills.ts";
+import { STATUS_MODULES, loadSkillRegistry, parseSkill, statusModule } from "../src/skills.ts";
 
 function skillFile(fields: Record<string, string>, body = "Body text."): string {
   const lines = Object.entries(fields).map(([key, value]) => `${key}: ${value}`);
@@ -86,24 +86,37 @@ test("the shipped skills load, and decision-funnel brings clinic-packages", () =
   }
 });
 
-test("code picks the Pipeline Status module for every pre-deposit status", () => {
-  for (const status of ["LEAD", "PREP_PRE_CLINICAL", "PRE_CLINICAL_SENT", "MEETING_MISSED", "WAITING"]) {
-    assert.match(statusModule(status), new RegExp(`^# PIPELINE STATUS: ${status}\\b`), status);
+test("code picks a module for every Pipeline Status in the map, each naming its status", () => {
+  for (const status of Object.keys(STATUS_MODULES)) {
+    const heading = statusModule(status).split("\n")[0];
+    assert.match(heading, /^# PIPELINE STATUS: /, status);
+    assert.ok(heading.includes(status), `${status}: ${heading}`);
   }
-  assert.match(statusModule("MEETING_BOOKED"), /^# PIPELINE STATUS: MEETING_BOOKED \/ MEETING_COMPLETED/);
-  assert.equal(statusModule("MEETING_COMPLETED"), statusModule("MEETING_BOOKED"));
+  assert.ok(Object.keys(STATUS_MODULES).includes("PRE_CLINICAL_SENT"));
 });
 
-test("an unknown Pipeline Status gets a short module that answers reactively", () => {
+test("any other Pipeline Status gets the default module, which answers reactively", () => {
+  assert.equal(statusModule("SOMETHING_NEW"), statusModule("../core"));
   assert.match(statusModule("SOMETHING_NEW"), /answer reactively/);
-  assert.equal(statusModule("../core"), statusModule("SOMETHING_NEW"));
 });
 
-test("the statuses before the assessment is sent carry the pricing length cap", () => {
-  for (const status of ["LEAD", "PREP_PRE_CLINICAL", "MEETING_BOOKED"]) {
-    assert.match(statusModule(status), /PRE-ASSESSMENT CLINIC AND PRICING ANSWERS \(LENGTH CAP/, status);
+test("the pricing length cap is one shared file, composed into the statuses before the assessment is sent", () => {
+  const cap = readFileSync("prompts/status/shared/pre-assessment-length-cap.md", "utf8").trim();
+  for (const status of ["LEAD", "PREP_PRE_CLINICAL", "MEETING_BOOKED"]) assert.ok(statusModule(status).includes(cap), status);
+  for (const status of ["PRE_CLINICAL_SENT", "MEETING_COMPLETED", "MEETING_MISSED", "WAITING"]) {
+    assert.ok(!statusModule(status).includes("LENGTH CAP"), status);
   }
-  assert.doesNotMatch(statusModule("PRE_CLINICAL_SENT"), /LENGTH CAP/);
+  const copies = readdirSync("prompts/status").filter(
+    (file) => file.endsWith(".md") && readFileSync(`prompts/status/${file}`, "utf8").includes("LENGTH CAP"),
+  );
+  assert.deepEqual(copies, []);
+});
+
+test("a module that points at another skill's rule says to load that skill", () => {
+  assert.match(statusModule("MEETING_MISSED"), /CONSULTATION RESCHEDULING \(the consultation skill, load it with loadSkill\)/);
+  assert.match(statusModule("MEETING_BOOKED"), /CONSULTATION BOOKING CONFIRMATION \(the consultation skill, load it with loadSkill\)/);
+  assert.match(statusModule("PREP_PRE_CLINICAL"), /\(the assessment-aftercare skill, load it with loadSkill\)/);
+  assert.match(statusModule("LEAD"), /\(the intake-photos skill, load it with loadSkill\)/);
 });
 
 test("intake-photos holds the intake rules and only the photo and name tools", () => {

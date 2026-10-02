@@ -107,21 +107,26 @@ function dirUrl(dir: string | URL): URL {
   return dir instanceof URL ? dir : pathToFileURL(dir.endsWith("/") ? dir : `${dir}/`);
 }
 
-// The module file for each Pipeline Status. The source prompt gives MEETING_BOOKED and MEETING_COMPLETED one section.
-const STATUS_MODULES: Record<string, string> = {
-  LEAD: "LEAD",
-  PREP_PRE_CLINICAL: "PREP_PRE_CLINICAL",
-  PRE_CLINICAL_SENT: "PRE_CLINICAL_SENT",
-  MEETING_BOOKED: "MEETING_BOOKED_OR_COMPLETED",
-  MEETING_COMPLETED: "MEETING_BOOKED_OR_COMPLETED",
-  MEETING_MISSED: "MEETING_MISSED",
-  WAITING: "WAITING",
+const LENGTH_CAP = "shared/pre-assessment-length-cap";
+const INTAKE_POINTER = "shared/intake-photos-pointer";
+
+// Every Pipeline Status with a module of its own, and the files composed into it, in order. The source prompt gives
+// MEETING_BOOKED and MEETING_COMPLETED one section, and its pricing length cap applies before the assessment is sent.
+export const STATUS_MODULES: Record<string, string[]> = {
+  LEAD: ["LEAD", INTAKE_POINTER, LENGTH_CAP],
+  PREP_PRE_CLINICAL: ["PREP_PRE_CLINICAL", LENGTH_CAP],
+  PRE_CLINICAL_SENT: ["PRE_CLINICAL_SENT"],
+  MEETING_BOOKED: ["MEETING_BOOKED_OR_COMPLETED", INTAKE_POINTER, LENGTH_CAP],
+  MEETING_COMPLETED: ["MEETING_BOOKED_OR_COMPLETED"],
+  MEETING_MISSED: ["MEETING_MISSED"],
+  WAITING: ["WAITING"],
 };
-// A status with no section of its own is answered reactively.
-const UNKNOWN_STATUS_MODULE = "UNKNOWN";
+
+// The module for any Pipeline Status without one of its own: answer reactively.
+const DEFAULT_STATUS_MODULE = ["REACTIVE"];
 
 // The module for the Patient's Pipeline Status. Code picks it, never triage.
 export function statusModule(pipelineStatus: string): string {
-  const file = Object.hasOwn(STATUS_MODULES, pipelineStatus) ? STATUS_MODULES[pipelineStatus] : UNKNOWN_STATUS_MODULE;
-  return readFileSync(new URL(`${file}.md`, STATUS_DIR), "utf8").trim();
+  const files = Object.hasOwn(STATUS_MODULES, pipelineStatus) ? STATUS_MODULES[pipelineStatus] : DEFAULT_STATUS_MODULE;
+  return files.map((file) => readFileSync(new URL(`${file}.md`, STATUS_DIR), "utf8").trim()).join("\n\n");
 }

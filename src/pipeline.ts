@@ -3,7 +3,7 @@ import { escalationReply } from "./escalation.ts";
 import { screenMessage } from "./guards.ts";
 import type { Reply } from "./reply.ts";
 import { DraftingError, type CreateResponse, type Step, type Trace } from "./model-calls.ts";
-import { PACKET_CONTEXT, type PatientContext } from "./patient-context.ts";
+import type { PatientContext } from "./patient-context.ts";
 import { respondBaseline } from "./responder.ts";
 import { respondWithSkills, type SkillResponderTrace } from "./skill-responder.ts";
 import { loadSkillRegistry, statusModule, type SkillRegistry } from "./skills.ts";
@@ -27,8 +27,8 @@ export interface PipelineOptions {
   create: CreateResponse;
   responderModel: string;
   triageModel: string;
-  // The Patient the message is from. Defaults to the packet's.
-  context?: PatientContext;
+  // The Patient the message is from.
+  context: PatientContext;
 }
 
 // Which way a message went: escalated by a guard in code, escalated by triage, answered with skills,
@@ -67,7 +67,7 @@ export async function respond(
   options: PipelineOptions,
 ): Promise<{ reply: Reply; trace: Trace }> {
   const responderOptions = { create: options.create, model: options.responderModel };
-  const context = options.context ?? PACKET_CONTEXT;
+  const { context } = options;
   if (mode === "baseline") return respondBaseline(text, responderOptions, context);
 
   const screening = screenMessage(text);
@@ -132,4 +132,12 @@ export async function respond(
     trace.path = "drafting-failed";
     throw new DraftingError(error instanceof Error ? error.message : String(error), trace);
   }
+}
+
+// The skills that ran for a message: the ones triage chose plus any the responder loaded mid-turn.
+export function skillsRun(trace: Trace | null): string[] {
+  const responder = (trace as Partial<PipelineTrace> | null)?.responder;
+  if (!responder || !("skills" in responder)) return [];
+  const { chosen, loaded } = responder.skills as SkillResponderTrace["skills"];
+  return [...chosen, ...loaded];
 }

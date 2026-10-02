@@ -15,9 +15,9 @@ export interface HumanMessage {
   text: string;
 }
 
-// A message to run, with the Patient it is from. Without a context it is the packet's Patient.
+// A message to run, with the Patient it is from.
 export interface RunMessage extends HumanMessage {
-  context?: PatientContext;
+  context: PatientContext;
 }
 
 export interface RunnerDeps {

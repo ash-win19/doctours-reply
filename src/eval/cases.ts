@@ -5,6 +5,7 @@ import type { ToolCallTrace } from "../model-calls.ts";
 import { loadContext, type PatientContext } from "../patient-context.ts";
 import type { RunMessage } from "../runner.ts";
 import type { Reply } from "../reply.ts";
+import { parseJsonAs } from "../json.ts";
 import {
   checkCalls,
   checkEscalate,
@@ -15,6 +16,7 @@ import {
   checkMaxSentences,
   checkNoUrl,
   checkReply,
+  checkSkills,
   type CheckResult,
   type NamedCheck,
 } from "./checks.ts";
@@ -34,6 +36,7 @@ const ExpectSchema = z
       .array(z.object({ tool: z.string().min(1), argsInclude: z.array(z.string()).optional() }).strict())
       .min(1)
       .optional(),
+    skills: z.object({ includes: z.array(z.string()).optional(), excludes: z.array(z.string()).optional() }).strict().optional(),
   })
   .strict();
 
@@ -55,17 +58,7 @@ export type EvalCase = z.infer<typeof EvalCaseSchema>;
 type Expect = EvalCase["expect"];
 
 export function parseCases(raw: string, path: string): EvalCase[] {
-  let json: unknown;
-  try {
-    json = JSON.parse(raw);
-  } catch {
-    throw new Error(`${path} is not valid JSON`);
-  }
-  const parsed = z.array(EvalCaseSchema).safeParse(json);
-  if (!parsed.success) {
-    throw new Error(`${path} has invalid cases\n${z.prettifyError(parsed.error)}`);
-  }
-  return parsed.data;
+  return parseJsonAs(raw, z.array(EvalCaseSchema), path, "has invalid cases");
 }
 
 export function loadCaseFiles(files: { path: string; raw: string }[]): EvalCase[] {
@@ -93,12 +86,16 @@ export function loadCases(names: string[] = []): EvalCase[] {
   return loadCaseFiles(fileNames.map((file) => ({ path: file, raw: readFileSync(join(CASES_DIR, file), "utf8") })));
 }
 
-// Each case's message with the Patient context it names. Each context file is read once.
+// Each case's message with the Patient context it names, or the packet's Patient. Each context file is read once.
 export function caseMessages(cases: EvalCase[]): RunMessage[] {
   const contexts = new Map<string | undefined, PatientContext>();
   return cases.map(({ id, text, context: path }) => {
-    if (!contexts.has(path)) contexts.set(path, loadContext(path));
-    return { id, text, context: contexts.get(path) };
+    let context = contexts.get(path);
+    if (!context) {
+      context = loadContext(path);
+      contexts.set(path, context);
+    }
+    return { id, text, context };
   });
 }
 
@@ -107,7 +104,16 @@ export interface CaseOutcome {
   checks: NamedCheck[];
 }
 
-type Check<Expected> = (reply: Reply, expected: Expected, toolCalls: ToolCallTrace[]) => CheckResult | null;
+// What the message did on its way to the Reply, read from its trace.
+export interface Observed {
+  toolCalls: ToolCallTrace[];
+  // The skills that ran: the ones triage chose plus any loaded mid-turn.
+  skills: string[];
+}
+
+const NOTHING_OBSERVED: Observed = { toolCalls: [], skills: [] };
+
+type Check<Expected> = (reply: Reply, expected: Expected, observed: Observed) => CheckResult | null;
 
 const CHECKS: { [Name in keyof Expect]-?: Check<NonNullable<Expect[Name]>> } = {
   escalate: checkEscalate,
@@ -117,17 +123,18 @@ const CHECKS: { [Name in keyof Expect]-?: Check<NonNullable<Expect[Name]>> } = {
   noUrl: (reply, expected) => (expected ? checkNoUrl(reply) : null),
   maxSentences: checkMaxSentences,
   maxAttachments: checkMaxAttachments,
-  calls: (_reply, expected, toolCalls) => checkCalls(toolCalls, expected),
+  calls: (_reply, expected, observed) => checkCalls(observed.toolCalls, expected),
+  skills: (_reply, expected, observed) => checkSkills(observed.skills, expected),
 };
 
 // Every Reply must match the schema with a null templateId, whatever the case expects.
-export function scoreCase(evalCase: EvalCase, reply: Reply, toolCalls: ToolCallTrace[] = []): CaseOutcome {
+export function scoreCase(evalCase: EvalCase, reply: Reply, observed: Observed = NOTHING_OBSERVED): CaseOutcome {
   const checks: NamedCheck[] = [{ name: "reply", ...checkReply(reply) }];
   for (const name of Object.keys(CHECKS) as (keyof Expect)[]) {
     const expected = evalCase.expect[name];
     if (expected === undefined) continue;
     const check = CHECKS[name] as Check<unknown>;
-    const result = check(reply, expected, toolCalls);
+    const result = check(reply, expected, observed);
     if (result) checks.push({ name, ...result });
   }
   return { passed: checks.every((check) => check.ok), checks };

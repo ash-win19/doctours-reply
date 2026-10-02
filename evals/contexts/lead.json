@@ -28,6 +28,36 @@
   "SUPABASE_CHAT_ID": "8e2f4a6c-1b3d-4f5e-8a7c-9d0e1f2a3b4c",
   "WORKING_MEMORY": "{\"collectionState\":{\"areaAskCount\":0,\"lastAskedItem\":\"none\",\"nameAskCount\":0,\"photoAskCount\":0},\"communicationStyle\":\"unknown\",\"escalationFlags\":\"none\",\"keyConcerns\":null,\"patientName\":null,\"preferredPaymentMethod\":\"unknown\",\"procedureArea\":null,\"promisesMade\":null,\"targetProcedureWindow\":\"unknown\"}",
   "toolOverrides": {
+    "getPatientContext": {
+      "clinicSelectionPreferences": {
+        "budgetMax": null,
+        "excludedDestinations": null,
+        "preferredDestinations": null,
+        "selectedClinicId": null,
+        "selectedPackageId": null,
+        "softClinicInterestIds": null,
+        "softPackageInterestIds": null
+      },
+      "consultationTime": null,
+      "email": null,
+      "name": null,
+      "phone": "+15555550199",
+      "pipelineStatus": "LEAD",
+      "tentativeProcedureDates": null
+    },
+    "getLatestAssessment": {
+      "assessmentUrl": null,
+      "graftRange": null,
+      "hasAssessment": false,
+      "hasHairlineDrawing": false,
+      "shareStatus": "not_ready",
+      "version": null
+    },
+    "getSavedClinics": {
+      "count": 0,
+      "recommendationStatus": "not_ready",
+      "savedClinics": []
+    },
     "getPatientImages": {
       "allAnglesUploaded": false,
       "angles": {
@@ -63,43 +93,21 @@
       ],
       "uploadedAngles": []
     },
-    "getPatientContext": {
-      "clinicSelectionPreferences": {
-        "budgetMax": null,
-        "excludedDestinations": null,
-        "preferredDestinations": null,
-        "selectedClinicId": null,
-        "selectedPackageId": null,
-        "softClinicInterestIds": null,
-        "softPackageInterestIds": null
-      },
-      "consultationTime": null,
-      "email": null,
-      "name": null,
-      "phone": "+15555550199",
-      "pipelineStatus": "LEAD",
-      "tentativeProcedureDates": null
-    },
-    "getLatestAssessment": {
-      "assessmentUrl": null,
-      "graftRange": null,
-      "hasAssessment": false,
-      "hasHairlineDrawing": false,
-      "shareStatus": "not_ready",
-      "version": null
-    },
-    "getSavedClinics": {
-      "count": 0,
-      "recommendationStatus": "not_ready",
-      "savedClinics": []
-    },
     "getFullCalls": {
       "calls": [],
       "count": 0
     },
     "updateUser": {
+      "firstName": "{{input.firstName}}",
+      "lastName": "{{input.lastName}}",
       "reason": null,
       "updated": true
+    },
+    "getConsultationRescheduleLink": {
+      "consultationTime": null,
+      "reason": "no_consultation_on_file",
+      "status": "no_consultation",
+      "url": null
     }
   }
 }

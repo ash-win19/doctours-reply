@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
 import { runMessages, MAX_CONCURRENCY } from "../src/runner.ts";
 import { SetupError } from "../src/errors.ts";
-import { loadContext } from "../src/patient-context.ts";
+import { PACKET_CONTEXT, loadContext } from "../src/patient-context.ts";
 import { ReplySchema } from "../src/reply.ts";
 import type { CreateResponse } from "../src/model-calls.ts";
 import { VALID_REPLY, modelResponse, functionCall, firstUserText, toolNames, triageDecision } from "./fakes.ts";
@@ -36,7 +36,7 @@ function setup() {
   return { traceRoot, log: () => {}, triageModel: "fake-triage" };
 }
 
-const inputs = Array.from({ length: 10 }, (_, index) => ({ id: `m${index}`, text: `message ${index}` }));
+const inputs = Array.from({ length: 10 }, (_, index) => ({ id: `m${index}`, text: `message ${index}`, context: PACKET_CONTEXT }));
 
 test("returns one Reply per message, in input order", async () => {
   const model = echoModel((text) => 50 - Number(text.match(/\d+/)![0]) * 4);
@@ -60,7 +60,7 @@ test("writes one trace file per message", async () => {
   const output = await runMessages(inputs.slice(0, 2), "baseline", { ...deps, create: model.create, responderModel: "fake" });
   const [runId] = readdirSync(deps.traceRoot);
   assert.equal(output.runId, runId);
-  assert.deepEqual(output.results[0].input, inputs[0]);
+  assert.deepEqual(output.results[0].input, { id: "m0", text: "message 0" });
   assert.equal(output.results[0].trace!.modelCalls.length, 1);
   assert.equal(output.results[0].error, null);
   assert.equal(typeof output.results[0].wallTimeMs, "number");
@@ -68,7 +68,7 @@ test("writes one trace file per message", async () => {
   const files = readdirSync(join(deps.traceRoot, runId)).sort();
   assert.deepEqual(files, ["m0.json", "m1.json"]);
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "m0.json"), "utf8"));
-  assert.deepEqual(trace.input, inputs[0]);
+  assert.deepEqual(trace.input, { id: "m0", text: "message 0" });
   assert.equal(trace.mode, "baseline");
   assert.equal(trace.modelCalls.length, 1);
   assert.equal(typeof trace.wallTimeMs, "number");
@@ -79,9 +79,9 @@ test("message ids become safe, unique trace file names", async () => {
   const deps = setup();
   const model = echoModel(() => 1);
   const odd = [
-    { id: "../escape", text: "a" },
-    { id: "same", text: "b" },
-    { id: "same", text: "c" },
+    { id: "../escape", text: "a", context: PACKET_CONTEXT },
+    { id: "same", text: "b", context: PACKET_CONTEXT },
+    { id: "same", text: "c", context: PACKET_CONTEXT },
   ];
   await runMessages(odd, "baseline", { ...deps, create: model.create, responderModel: "fake" });
   const [runId] = readdirSync(deps.traceRoot);
@@ -149,8 +149,8 @@ const passThroughModel: CreateResponse = async (params) => {
 test("default mode runs guards and triage before the responder", async () => {
   const deps = setup();
   const messages = [
-    { id: "price", text: "What does Heva cost?" },
-    { id: "human", text: "I demand to talk to a human" },
+    { id: "price", text: "What does Heva cost?", context: PACKET_CONTEXT },
+    { id: "human", text: "I demand to talk to a human", context: PACKET_CONTEXT },
   ];
   const { results } = await runMessages(messages, "default", { ...deps, create: passThroughModel, responderModel: "fake" });
   assert.equal(results[0].reply.response, '"What does Heva cost?"');
@@ -164,7 +164,7 @@ test("default mode runs guards and triage before the responder", async () => {
 
 test("card numbers never reach a trace file", async () => {
   const deps = setup();
-  const card = [{ id: "card", text: "Put it on 4111 1111 1111 1111 please" }];
+  const card = [{ id: "card", text: "Put it on 4111 1111 1111 1111 please", context: PACKET_CONTEXT }];
   const { results } = await runMessages(card, "default", { ...deps, create: passThroughModel, responderModel: "fake" });
   assert.equal(results[0].reply.escalate, true);
   const [runId] = readdirSync(deps.traceRoot);
@@ -175,15 +175,15 @@ test("card numbers never reach a trace file", async () => {
 
 test("each message can carry its own Patient context", async () => {
   const deps = setup();
-  const lead = loadContext("evals/contexts/lead.json");
+  const leadPatient = loadContext("evals/contexts/lead.json");
   const messages = [
-    { id: "packet", text: "What does Heva cost?" },
-    { id: "lead", text: "What does Heva cost?", context: lead },
+    { id: "packet", text: "What does Heva cost?", context: PACKET_CONTEXT },
+    { id: "new-patient", text: "What does Heva cost?", context: leadPatient },
   ];
   const { results } = await runMessages(messages, "default", { ...deps, create: passThroughModel, responderModel: "fake" });
-  assert.deepEqual(results[1].input, { id: "lead", text: "What does Heva cost?" });
+  assert.deepEqual(results[1].input, { id: "new-patient", text: "What does Heva cost?" });
   const [runId] = readdirSync(deps.traceRoot);
   const triageCard = (id: string) => JSON.parse(readFileSync(join(deps.traceRoot, runId, `${id}.json`), "utf8")).triage.userMessage;
   assert.match(triageCard("packet"), /Pipeline Status: PRE_CLINICAL_SENT/);
-  assert.match(triageCard("lead"), /Pipeline Status: LEAD/);
+  assert.match(triageCard("new-patient"), /Pipeline Status: LEAD/);
 });

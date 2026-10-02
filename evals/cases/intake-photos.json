@@ -53,7 +53,7 @@
   {
     "id": "lead-hair-state-delay",
     "group": "intake-photos",
-    "rule": "Source, IMAGE DELAY HANDLING: a sew-in gets a two-week check-in and no upload link.",
+    "rule": "Source, IMAGE DELAY HANDLING: a sew-in gets a two-week Follow-up and no upload link.",
     "text": "I'd love to get started but I have a sew-in in right now, so photos wouldn't show much.",
     "context": "evals/contexts/lead.json",
     "expect": {
@@ -70,9 +70,9 @@
   {
     "id": "lead-done-not-saved",
     "group": "intake-photos",
-    "rule": "Source, IMAGE GUIDANCE: after \"done\", check getPatientImagesTool; with no photos saved, say to tap Save photos, send done again, upload link last.",
+    "rule": "Source, IMAGE GUIDANCE: after a photo ask, \"done\" means calling getPatientImagesTool; with no photos saved, say to tap Save photos and send done again, with the upload link last and a Follow-up in a few hours.",
     "text": "done, I uploaded them all",
-    "context": "evals/contexts/lead.json",
+    "context": "evals/contexts/lead-photos-asked.json",
     "expect": {
       "escalate": false,
       "includes": [
@@ -116,7 +116,26 @@
         {
           "tool": "getPatientImagesTool"
         }
-      ]
+      ],
+      "skills": {
+        "includes": [
+          "intake-photos"
+        ]
+      }
+    }
+  },
+  {
+    "id": "packet-price-skips-intake",
+    "group": "intake-photos",
+    "rule": "AW-98: for the packet Patient, intake-photos loads only when the message is about photos.",
+    "text": "What does Dr. Hakan Clinic cost?",
+    "expect": {
+      "escalate": false,
+      "skills": {
+        "excludes": [
+          "intake-photos"
+        ]
+      }
     }
   }
 ]

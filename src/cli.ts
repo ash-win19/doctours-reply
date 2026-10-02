@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defaultRunnerDeps, log } from "./deps.ts";
+import { parseJsonAs } from "./json.ts";
 import { loadContext } from "./patient-context.ts";
 import { parseMode, type Mode } from "./pipeline.ts";
 import { runMessages, type HumanMessage } from "./runner.ts";
@@ -31,17 +32,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
 }
 
 export function parseMessages(raw: string): HumanMessage[] {
-  let json: unknown;
-  try {
-    json = JSON.parse(raw);
-  } catch {
-    throw new Error("Input is not valid JSON");
-  }
-  const parsed = MessagesSchema.safeParse(json);
-  if (!parsed.success) {
-    throw new Error(`Input must be a JSON array of {id: string, text: string}\n${z.prettifyError(parsed.error)}`);
-  }
-  return parsed.data;
+  return parseJsonAs(raw, MessagesSchema, "Input", "must be a JSON array of {id: string, text: string}");
 }
 
 async function main(): Promise<void> {

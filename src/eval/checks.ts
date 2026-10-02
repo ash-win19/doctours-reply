@@ -111,3 +111,18 @@ export function checkCalls(calls: ToolCallTrace[], expected: ExpectedCall[]): Ch
     detail: missing.length ? `no successful call to ${missing.map(describe).join(", ")}` : "made every expected tool call",
   };
 }
+
+export interface ExpectedSkills {
+  includes?: string[];
+  excludes?: string[];
+}
+
+// Every included skill ran, and no excluded one did.
+export function checkSkills(skills: string[], { includes = [], excludes = [] }: ExpectedSkills): CheckResult {
+  const problems = [
+    ...includes.filter((id) => !skills.includes(id)).map((id) => `${id} didn't run`),
+    ...excludes.filter((id) => skills.includes(id)).map((id) => `${id} ran`),
+  ];
+  const ran = skills.length ? skills.join(", ") : "none";
+  return { ok: problems.length === 0, detail: problems.length ? `${problems.join(", ")} (skills that ran: ${ran})` : `skills that ran: ${ran}` };
+}

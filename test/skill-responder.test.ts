@@ -4,7 +4,7 @@ import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai
 import { respondWithSkills } from "../src/skill-responder.ts";
 import { loadSkillRegistry, statusModule } from "../src/skills.ts";
 import { escalationReply } from "../src/escalation.ts";
-import * as context from "../src/context.ts";
+import { PACKET_CONTEXT as context } from "../src/patient-context.ts";
 import { VALID_REPLY, firstUserText, functionCall, scriptedModel, toolNames, type FakeFunctionCall } from "./fakes.ts";
 
 const registry = loadSkillRegistry();

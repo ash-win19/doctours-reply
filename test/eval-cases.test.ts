@@ -59,10 +59,10 @@ test("rejects unknown checks so a typo can't pass silently", () => {
 
 test("a case can name a Patient context file, and its message runs with that context", () => {
   const [withContext] = parseCases(JSON.stringify([{ ...baseCase, context: "evals/contexts/lead.json" }]), "cases.json");
-  const [packetMessage, leadMessage] = caseMessages([baseCase, { ...withContext, id: "lead" }]);
+  const [packetMessage, leadPatientMessage] = caseMessages([baseCase, { ...withContext, id: "new-patient" }]);
   assert.equal(packetMessage.context, PACKET_CONTEXT);
-  assert.equal(leadMessage.context?.PIPELINE_STATUS, "LEAD");
-  assert.deepEqual({ id: leadMessage.id, text: leadMessage.text }, { id: "lead", text: baseCase.text });
+  assert.equal(leadPatientMessage.context.PIPELINE_STATUS, "LEAD");
+  assert.deepEqual({ id: leadPatientMessage.id, text: leadPatientMessage.text }, { id: "new-patient", text: baseCase.text });
 });
 
 test("a case's context must be a file path", () => {
@@ -131,6 +131,16 @@ test("nothing outside the eval harness reads the packet-check cases", () => {
 test("a calls check is scored against the message's tool calls", () => {
   const evalCase = { ...baseCase, expect: { calls: [{ tool: "updateUserClinicPreferencesTool", argsInclude: ["heva-id"] }] } };
   const call = { name: "updateUserClinicPreferencesTool", input: { clinicSelection: { selectedClinicId: "heva-id" } }, output: {}, isError: false };
-  assert.equal(scoreCase(evalCase, VALID_REPLY, [call]).passed, true);
-  assert.equal(scoreCase(evalCase, VALID_REPLY, []).passed, false);
+  assert.equal(scoreCase(evalCase, VALID_REPLY, { toolCalls: [call], skills: [] }).passed, true);
+  assert.equal(scoreCase(evalCase, VALID_REPLY, { toolCalls: [], skills: [] }).passed, false);
+});
+
+test("a skills check is scored against the skills that ran", () => {
+  const evalCase = { ...baseCase, expect: { skills: { includes: ["intake-photos"], excludes: ["payments"] } } };
+  assert.equal(scoreCase(evalCase, VALID_REPLY, { toolCalls: [], skills: ["intake-photos"] }).passed, true);
+  assert.equal(scoreCase(evalCase, VALID_REPLY, { toolCalls: [], skills: ["intake-photos", "payments"] }).passed, false);
+  assert.throws(
+    () => parseCases(JSON.stringify([{ ...baseCase, expect: { skills: { inclues: ["x"] } } }]), "cases.json"),
+    /inclues/,
+  );
 });

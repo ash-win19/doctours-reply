@@ -12,7 +12,7 @@ const noModel: CreateResponse = async () => {
 };
 
 function options(create: CreateResponse) {
-  return { create, responderModel: "responder-model", triageModel: "triage-model" };
+  return { create, responderModel: "responder-model", triageModel: "triage-model", context: PACKET_CONTEXT };
 }
 
 test("card details escalate without a model call, and the digits never reach the trace", async () => {
@@ -158,7 +158,7 @@ test("baseline mode skips guards and triage", async () => {
   assert.match(model.requests[0].instructions as string, /^# IDENTITY/);
 });
 
-const lead = loadContext("evals/contexts/lead.json");
+const leadPatient = loadContext("evals/contexts/lead.json");
 
 test("a swapped context reaches triage, the core prompt, the Pipeline Status module and the tools", async () => {
   const model = scriptedModel([
@@ -166,7 +166,7 @@ test("a swapped context reaches triage, the core prompt, the Pipeline Status mod
     [functionCall("getPatientImagesTool", {})],
     [functionCall("submitReply", VALID_REPLY)],
   ]);
-  const { trace } = await respond("done", "default", { ...options(model.create), context: lead });
+  const { trace } = await respond("done", "default", { ...options(model.create), context: leadPatient });
   assert.match(firstUserText(model.requests[0]), /Pipeline Status: LEAD/);
   assert.match(firstUserText(model.requests[0]), /Intake items: area MISSING; name MISSING; photos MISSING/);
   const system = model.requests[1].instructions as string;
@@ -188,7 +188,7 @@ test("an unknown Pipeline Status is answered reactively with skills, not by the 
 
 test("baseline mode fills the original prompt and tools from a swapped context", async () => {
   const model = scriptedModel([[functionCall("getPatientImagesTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
-  const { trace } = await respond("done", "baseline", { ...options(model.create), context: lead });
-  assert.ok((model.requests[0].instructions as string).includes(lead.PATIENT_SUMMARY));
+  const { trace } = await respond("done", "baseline", { ...options(model.create), context: leadPatient });
+  assert.ok((model.requests[0].instructions as string).includes(leadPatient.PATIENT_SUMMARY));
   assert.equal((trace.toolCalls![0].output as { hasImages: boolean }).hasImages, false);
 });

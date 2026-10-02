@@ -154,3 +154,20 @@ test("compare shows both runs side by side and the cases that flipped", () => {
   assert.match(text, /Fixed\s+charge-card/);
   assert.match(text, /Broke\s+consultation/);
 });
+
+test("a skills check reads the skills triage chose and any loaded mid-turn from the trace", () => {
+  const skillCase: EvalCase = {
+    ...cases[0],
+    id: "photos",
+    expect: { skills: { includes: ["intake-photos", "payments"], excludes: ["decision-funnel"] } },
+  };
+  const responder = { system: "", userMessage: "", finalOutput: null, skills: { chosen: ["intake-photos"], loaded: ["payments"] } };
+  const pipelineTrace = { modelCalls: [], toolCalls: [], responder };
+  const skillRun: RunOutput = {
+    runId: run.runId,
+    results: [{ input: { id: "photos", text: "" }, reply: VALID_REPLY, trace: pipelineTrace, error: null, wallTimeMs: 1 }],
+  };
+  assert.equal(buildScorecard({ cases: [skillCase], run: skillRun, mode: "default", model: "fake-model" }).cases[0].passed, true);
+  const noSkills: RunOutput = { runId: run.runId, results: [{ ...skillRun.results[0], trace: trace([]) }] };
+  assert.equal(buildScorecard({ cases: [skillCase], run: noSkills, mode: "default", model: "fake-model" }).cases[0].passed, false);
+});
