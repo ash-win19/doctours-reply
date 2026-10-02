@@ -81,6 +81,22 @@ test("mentions of people that aren't a request for one pass through to triage", 
   }
 });
 
+test("negated, quoted and contextual person mentions do not force escalation", () => {
+  for (const text of [
+    "I do not want to talk to a human. What does Hakan cost?",
+    "I don't need someone to call me",
+    "Please do not call me back",
+    "My bank representative says Klarna works in Canada. Is that right?",
+    "My friend asked me to talk to a human",
+    'What does "get me a human" mean?',
+    '"I demand to talk to a human" is what I said yesterday.',
+    "If I want to talk to a human, how would that work?",
+    "Can I speak with a real person? Actually, never mind.",
+  ]) {
+    assert.equal(screenMessage(text).forceEscalate, null, text);
+  }
+});
+
 test("screening redacts card numbers and forces an Escalation for cards or a person", () => {
   assert.deepEqual(screenMessage("Charge my card ending in 4242"), {
     redactedText: "Charge my card ending in [card number]",

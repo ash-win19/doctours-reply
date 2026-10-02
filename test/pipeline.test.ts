@@ -34,6 +34,23 @@ test("an explicit request for a person escalates without a model call", async ()
   assert.equal((trace as PipelineTrace).path, "guard-escalation");
 });
 
+test("negations and contextual person mentions reach triage and can receive an answer", async () => {
+  for (const text of [
+    "I do not want to talk to a human. What does Hakan cost?",
+    "My bank representative says Klarna works in Canada. Is that right?",
+  ]) {
+    const model = scriptedModel([
+      [functionCall("submitTriage", triageDecision({ skills: ["clinic-packages"] }))],
+      [functionCall("submitReply", VALID_REPLY)],
+    ]);
+    const { reply, trace } = await respond(text, "default", options(model.create));
+    assert.equal(reply.escalate, false, text);
+    assert.equal((trace as PipelineTrace).path, "skills");
+    assert.ok(firstUserText(model.requests[0]).includes(text));
+    assert.deepEqual(trace.modelCalls.map((call) => call.step), ["triage", "responder"]);
+  }
+});
+
 test("triage sees the message, the state card and the last four turns", async () => {
   const model = scriptedModel([[functionCall("submitTriage", triageDecision({ escalate: true }))]]);
   await respond("refund what I paid yesterday", "default", options(model.create));

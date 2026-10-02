@@ -43,26 +43,24 @@ export function cardDigitsIn(text: string): string[] {
 
 const PERSON = String.raw`(?:a\s+|an\s+|some\s+)?(?:real\s+|live\s+|actual\s+)?(?:human(?:\s+being)?|person|someone|somebody|agent|representative|manager)`;
 
-// "Someone at Heva" is a clinic contact, which ADR 0002 answers the first time.
-const NOT_A_CLINIC = String.raw`(?!\s+(?:at|from|in)\s)`;
-
-// Asking to be put through to a person, or asking for a call.
+// Match complete affirmative requests only. Negations, quotations, clinic contacts and
+// compound messages need triage's context; a matching substring is not proof of a request.
+const ASK_TO_TALK = String.raw`(?:(?:i\s+(?:want|need|demand)\s+to|(?:can|could|may)\s+i)\s+)?`;
+const REQUEST_END = String.raw`(?:\s*,?\s+(?:please|now|right\s+now|tonight|tomorrow|not\s+a\s+bot))?[.!?]*`;
 const HUMAN_REQUESTS = [
-  new RegExp(String.raw`\b(?:talk|speak|chat)\s+(?:to|with)\s+${PERSON}\b${NOT_A_CLINIC}`, "i"),
-  new RegExp(String.raw`\b(?:get|give|connect|transfer|put)\s+me\s+(?:to\s+|through\s+to\s+|with\s+)?${PERSON}\b${NOT_A_CLINIC}`, "i"),
-  /\b(?:can|could|would|will)\s+(?:you|someone|somebody|anyone)\s+(?:please\s+)?call\s+me\b/i,
-  /\b(?:someone|somebody|anyone)\s+(?:to\s+)?call\s+me\b/i,
-  /\b(?:please\s+call\s+me|call\s+me\s+back)\b/i,
-  /\bgive\s+me\s+a\s+(?:call|ring)\b/i,
-];
-// Bare mentions that still mean "a person, please", unless the Patient is asking what we are.
-const PERSON_NOUNS = /\b(?:real\s+(?:person|human)|live\s+(?:person|agent)|human\s+being|representative)\b/i;
-const IDENTITY_QUESTION = /\b(?:are\s+you|is\s+this|am\s+i\s+(?:talking|speaking|texting|chatting)\s+(?:to|with))\s+(?:a\s+|an\s+)?(?:real\s+)?(?:person|human|bot|robot|ai)\b/i;
+  String.raw`${ASK_TO_TALK}(?:talk|speak|chat)\s+(?:to|with)\s+${PERSON}`,
+  String.raw`(?:get|give|connect|transfer|put)\s+me\s+(?:to\s+|through\s+to\s+|with\s+)?${PERSON}`,
+  String.raw`(?:can|could|would|will)\s+(?:you|someone|somebody|anyone)\s+(?:please\s+)?call\s+me(?:\s+back)?`,
+  String.raw`(?:i\s+(?:want|need)\s+)?(?:someone|somebody|anyone)\s+(?:to\s+)?call\s+me(?:\s+back)?`,
+  String.raw`call\s+me(?:\s+back)?`,
+  String.raw`give\s+me\s+a\s+(?:call|ring)`,
+  String.raw`is\s+there\s+${PERSON}`,
+  String.raw`(?:i\s+(?:want|need)\s+)?${PERSON}`,
+].map((request) => new RegExp(String.raw`^(?:please\s+)?${request}${REQUEST_END}$`, "i"));
 
-// A short phrase list for the certain cases. Triage handles paraphrases.
+// Only these unambiguous full-message forms skip the model. Triage handles other requests.
 export function detectHumanRequest(text: string): boolean {
-  if (HUMAN_REQUESTS.some((pattern) => pattern.test(text))) return true;
-  return PERSON_NOUNS.test(text) && !IDENTITY_QUESTION.test(text);
+  return HUMAN_REQUESTS.some((pattern) => pattern.test(text.trim()));
 }
 
 export interface ForcedEscalation {
