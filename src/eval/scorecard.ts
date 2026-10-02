@@ -61,7 +61,9 @@ export function buildScorecard({
     const { reply, trace, error, wallTimeMs } = run.results[index];
     // A fallback Reply is not the model's work, so the case fails however its checks would score.
     const { passed, checks } =
-      error !== null ? { passed: false, checks: [{ name: "drafted", ok: false, detail: error }] } : scoreCase(evalCase, reply);
+      error !== null
+        ? { passed: false, checks: [{ name: "drafted", ok: false, detail: error }] }
+        : scoreCase(evalCase, reply, trace?.toolCalls ?? []);
     return {
       id: evalCase.id,
       group: evalCase.group,

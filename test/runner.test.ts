@@ -157,7 +157,7 @@ test("default mode runs guards and triage before the responder", async () => {
   const [runId] = readdirSync(deps.traceRoot);
   const trace = JSON.parse(readFileSync(join(deps.traceRoot, runId, "price.json"), "utf8"));
   assert.equal(trace.mode, "default");
-  assert.equal(trace.path, "baseline");
+  assert.equal(trace.path, "skills");
   assert.deepEqual(trace.modelCalls.map((call: { step: string }) => call.step), ["triage", "responder"]);
 });
 

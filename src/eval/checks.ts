@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ToolCallTrace } from "../model-calls.ts";
 import { ReplySchema, type Reply } from "../reply.ts";
 
 export interface CheckResult {
@@ -88,4 +89,25 @@ export function checkMaxSentences(reply: Reply, max: number): CheckResult {
 export function checkMaxAttachments(reply: Reply, max: number): CheckResult {
   const count = reply.attachmentUrls?.length ?? 0;
   return { ok: count <= max, detail: `${count} attachment URLs, max ${max}` };
+}
+
+export interface ExpectedCall {
+  tool: string;
+  // Texts that must appear in the call's JSON arguments, such as a clinic id.
+  argsInclude?: string[];
+}
+
+// Every expected tool must have run without error, with arguments holding each expected text.
+export function checkCalls(calls: ToolCallTrace[], expected: ExpectedCall[]): CheckResult {
+  const missing = expected.filter(
+    ({ tool, argsInclude = [] }) =>
+      !calls.some(
+        (call) => call.name === tool && !call.isError && argsInclude.every((text) => JSON.stringify(call.input).includes(text)),
+      ),
+  );
+  const describe = ({ tool, argsInclude }: ExpectedCall) => (argsInclude?.length ? `${tool} with ${quoted(argsInclude)}` : tool);
+  return {
+    ok: missing.length === 0,
+    detail: missing.length ? `no successful call to ${missing.map(describe).join(", ")}` : "made every expected tool call",
+  };
 }

@@ -1,0 +1,103 @@
+[
+  {
+    "id": "cp-heva-afro",
+    "group": "clinic-packages",
+    "rule": "Source, PACKAGE & CLINIC FACTS: hair type and afro capability come from clinic_flags; Speciality \"Afro Hair\" means an afro-hair specialist.",
+    "text": "Does Heva do afro hair? I have 4C curls.",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "afro"
+      ],
+      "excludes": [
+        "don't have",
+        "not flagged"
+      ]
+    }
+  },
+  {
+    "id": "cp-hakan-hotel-nights",
+    "group": "clinic-packages",
+    "rule": "Source, PACKAGE & CLINIC FACTS: hotel nights come verbatim from includedAddons.",
+    "text": "How many hotel nights come with Dr. Hakan's package?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Sapphire",
+        [
+          "3 nights",
+          "three nights",
+          "3 hotel nights",
+          "three hotel nights"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "cp-heva-tier-difference",
+    "group": "clinic-packages",
+    "rule": "Source, PACKAGE & CLINIC FACTS: exact attribution per package; WHAT MATTERS vs NICE TO HAVE.",
+    "text": "What's the actual difference between Heva's Silver and Gold?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Silver",
+        "Gold",
+        [
+          "4 nights",
+          "four nights",
+          "4 hotel nights",
+          "four hotel nights",
+          "extra night",
+          "one more night"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "cp-silver-wednesday",
+    "group": "clinic-packages",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 10: bookable weekdays come from the package's bookableWeekdays, never the clinic.",
+    "text": "Can I book Heva's Silver package on a Wednesday?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "isn't",
+          "is not",
+          "not available",
+          "can't",
+          "cannot",
+          "doesn't",
+          "does not",
+          "not bookable",
+          "not on"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "cp-direct-quote",
+    "group": "clinic-packages",
+    "rule": "Source, DIRECT-FROM-CLINIC PRICE QUOTES: acknowledge the quote, then give tool-grounded Doctours pricing.",
+    "text": "Heva told me $2,600 when I emailed them directly.",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "3,000"
+      ]
+    }
+  },
+  {
+    "id": "cp-hakan-incisions",
+    "group": "clinic-packages",
+    "rule": "Source, PACKAGE & CLINIC FACTS: who performs the incisions at Dr. Hakan.",
+    "text": "At Dr. Hakan, does the doctor do the incisions himself?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "hairline"
+      ]
+    }
+  }
+]
