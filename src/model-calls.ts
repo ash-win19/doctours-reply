@@ -1,7 +1,9 @@
 import type {
+  FunctionTool,
   Response,
   ResponseCreateParamsNonStreaming,
   ResponseFunctionToolCall,
+  ResponseInputItem,
   ResponseUsage,
 } from "openai/resources/responses/responses";
 import { z } from "zod";
@@ -14,8 +16,8 @@ export interface ModelOptions {
   model: string;
 }
 
-// The part of the work a model call belongs to.
-export type Step = "triage" | "responder";
+// The part of the work a model call belongs to. "callHistory" is the subagent that reads call transcripts.
+export type Step = "triage" | "responder" | "callHistory";
 
 export interface ModelCallTrace {
   step: Step;
@@ -113,4 +115,50 @@ export function parseSubmission<T>(call: ResponseFunctionToolCall, schema: z.Zod
     raw: args.value,
     feedback: `${what} does not match the schema. Fix it and call ${call.name} again.\n${z.prettifyError(parsed.error)}`,
   };
+}
+
+export interface ForcedSubmit<T> {
+  trace: Trace;
+  step: Step;
+  system: string;
+  userMessage: string;
+  // The one tool the model must call. Its parameters are the schema.
+  tool: FunctionTool;
+  schema: z.ZodType<T>;
+  // How feedback names the submission, such as "The decision".
+  what: string;
+  // Sees each submission's raw arguments, valid or not, so a trace can keep them.
+  onSubmission?: (raw: unknown) => void;
+}
+
+// One retry when the submission doesn't parse.
+const MAX_SUBMIT_ATTEMPTS = 2;
+
+// Forces one submit tool call and parses it, sending a failed parse back to the model once.
+export async function forcedSubmit<T>(spec: ForcedSubmit<T>, { create, model }: ModelOptions): Promise<T> {
+  const { trace, tool } = spec;
+  const conversation: ResponseInputItem[] = [{ role: "user", content: spec.userMessage }];
+  for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt++) {
+    const response = await tracedCall(
+      create,
+      {
+        model,
+        instructions: spec.system,
+        input: conversation,
+        tools: [tool],
+        tool_choice: { type: "function", name: tool.name },
+        max_output_tokens: 4000,
+      },
+      trace.modelCalls,
+      spec.step,
+    );
+    const call = functionCalls(response).find(({ name }) => name === tool.name);
+    if (!call) throw new DraftingError(`Model stopped without calling ${tool.name}`, trace);
+    conversation.push(...(response.output as ResponseInputItem[]));
+    const submission = parseSubmission(call, spec.schema, spec.what);
+    spec.onSubmission?.(submission.raw);
+    if (submission.ok) return submission.value;
+    conversation.push({ type: "function_call_output", call_id: call.call_id, output: submission.feedback });
+  }
+  throw new DraftingError(`${tool.name} did not return a valid submission in ${MAX_SUBMIT_ATTEMPTS} attempts`, trace);
 }

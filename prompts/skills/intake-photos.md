@@ -1,6 +1,6 @@
 ---
 id: intake-photos
-description: Intake items (area, name, photos): first-contact intro, the one collection ask, uploads and "done", photo delays, seeing their photos. Pick when the state card names a next anchor.
+description: Intake items (area, name, photos): first-contact intro, the one collection ask, uploads and "done", photo delays, their own photos.
 tools: [getPatientImagesTool, updateUserTool]
 requires: []
 overrides: []

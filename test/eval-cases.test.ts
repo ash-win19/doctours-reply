@@ -37,6 +37,7 @@ test("accepts a case with every check", () => {
           maxSentences: 2,
           maxAttachments: 0,
           calls: [{ tool: "getPaymentLinkTool", argsInclude: ["payment"] }],
+          fields: { shouldFollowUp: true, followUpTiming: ["1 month", "next month"], "workingMemoryUpdates.promisesMade": "*" },
         },
       },
     ]),
@@ -143,4 +144,10 @@ test("a skills check is scored against the skills that ran", () => {
     () => parseCases(JSON.stringify([{ ...baseCase, expect: { skills: { inclues: ["x"] } } }]), "cases.json"),
     /inclues/,
   );
+});
+
+test("a fields check is scored against the Reply", () => {
+  const evalCase = { ...baseCase, expect: { fields: { shouldFollowUp: true, followUpTiming: ["1 month"] } } };
+  assert.equal(scoreCase(evalCase, { ...VALID_REPLY, shouldFollowUp: true, followUpTiming: "1 month" }).passed, true);
+  assert.equal(scoreCase(evalCase, VALID_REPLY).passed, false);
 });

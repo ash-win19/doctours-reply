@@ -1,15 +1,6 @@
-import type { ResponseInputItem } from "openai/resources/responses/responses";
 import { z } from "zod";
 import { buildTriageSystemPrompt, buildTriageUserMessage, type SkillSummary } from "./prompt.ts";
-import {
-  DraftingError,
-  asDraftingError,
-  functionCalls,
-  parseSubmission,
-  tracedCall,
-  type ModelOptions,
-  type Trace,
-} from "./model-calls.ts";
+import { asDraftingError, forcedSubmit, type ModelOptions, type Trace } from "./model-calls.ts";
 import { toolDefinition } from "./tools.ts";
 
 export const TriageDecisionSchema = z.object({
@@ -36,12 +27,8 @@ export interface TriageTrace extends Trace {
   output: unknown;
 }
 
-const SUBMIT_TRIAGE = "submitTriage";
-// One retry when the decision doesn't parse.
-const MAX_ATTEMPTS = 2;
-
 const submitTriageTool = toolDefinition(
-  SUBMIT_TRIAGE,
+  "submitTriage",
   "Submit the triage decision for the incoming message.",
   TriageDecisionSchema,
 );
@@ -55,35 +42,21 @@ export async function triage(
   const userMessage = buildTriageUserMessage(input);
   const trace: TriageTrace = { system, userMessage, output: null, modelCalls: [] };
   try {
-    return { decision: await submitTriageLoop(trace, options), trace };
+    const decision = await forcedSubmit(
+      {
+        trace,
+        step: "triage",
+        system,
+        userMessage,
+        tool: submitTriageTool,
+        schema: TriageDecisionSchema,
+        what: "The decision",
+        onSubmission: (raw) => (trace.output = raw),
+      },
+      options,
+    );
+    return { decision, trace };
   } catch (error) {
     throw asDraftingError(error, trace);
   }
-}
-
-async function submitTriageLoop(trace: TriageTrace, { create, model }: ModelOptions): Promise<TriageDecision> {
-  const conversation: ResponseInputItem[] = [{ role: "user", content: trace.userMessage }];
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const response = await tracedCall(
-      create,
-      {
-        model,
-        instructions: trace.system,
-        input: conversation,
-        tools: [submitTriageTool],
-        tool_choice: { type: "function", name: SUBMIT_TRIAGE },
-        max_output_tokens: 4000,
-      },
-      trace.modelCalls,
-      "triage",
-    );
-    const call = functionCalls(response).find(({ name }) => name === SUBMIT_TRIAGE);
-    if (!call) throw new DraftingError("Triage stopped without a decision", trace);
-    conversation.push(...(response.output as ResponseInputItem[]));
-    const submission = parseSubmission(call, TriageDecisionSchema, "The decision");
-    trace.output = submission.raw;
-    if (submission.ok) return submission.value;
-    conversation.push({ type: "function_call_output", call_id: call.call_id, output: submission.feedback });
-  }
-  throw new DraftingError(`Triage did not return a valid decision in ${MAX_ATTEMPTS} attempts`, trace);
 }

@@ -136,3 +136,31 @@ test("intake-photos holds the intake rules and only the photo and name tools", (
   }
   assert.match(skill.text, /never list more than 3 URLs/);
 });
+
+test("each rule lives in one skill: the parked PACKAGE & CLINIC FACTS bullets moved to their homes", () => {
+  const registry = loadSkillRegistry();
+  const holders = (phrase: string) =>
+    registry
+      .index()
+      .map(({ id }) => registry.resolve([id]).find((loaded) => loaded.id === id)!)
+      .filter((loaded) => loaded.text.includes(phrase))
+      .map(({ id }) => id);
+  assert.deepEqual(holders("**Why we need the passport:**"), ["travel"]);
+  assert.deepEqual(holders("**Where to get finasteride or minoxidil:**"), ["assessment-aftercare"]);
+  assert.deepEqual(holders("**Can they message the clinic themselves:**"), ["clinic-contact"]);
+});
+
+test("every skill a status module or another skill points at exists in the registry", () => {
+  const registry = loadSkillRegistry();
+  const files = [
+    ...readdirSync("prompts/status", { recursive: true, encoding: "utf8" }).map((file) => `prompts/status/${file}`),
+    ...readdirSync("prompts/skills").map((file) => `prompts/skills/${file}`),
+  ].filter((path) => path.endsWith(".md"));
+  const mentions = files.flatMap((path) =>
+    [...readFileSync(path, "utf8").matchAll(/(?:the |\()([a-z][a-z-]*) skill\b/g)].map((match) => ({ path, id: match[1] })),
+  );
+  assert.ok(mentions.length > 0);
+  for (const { path, id } of mentions) assert.ok(registry.has(id), `${path} points at a missing skill: ${id}`);
+  const fromModules = new Set(mentions.filter(({ path }) => path.startsWith("prompts/status/")).map(({ id }) => id));
+  assert.deepEqual([...fromModules].sort(), ["assessment-aftercare", "consultation", "decision-funnel", "intake-photos", "pause"]);
+});

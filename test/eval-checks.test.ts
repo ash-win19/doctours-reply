@@ -2,7 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   checkCalls,
+  checkLeadsWith,
   checkSkills,
+  checkFields,
   checkEscalate,
   checkReply,
   checkExcludes,
@@ -139,4 +141,37 @@ test("a skills check names a missing or unwanted skill", () => {
   const unwanted = checkSkills(["clinic-packages", "intake-photos"], { excludes: ["intake-photos"] });
   assert.equal(unwanted.ok, false);
   assert.match(unwanted.detail, /intake-photos ran/);
+});
+
+test("a fields check compares Reply fields by dotted path", () => {
+  const reply = {
+    ...VALID_REPLY,
+    shouldFollowUp: true,
+    followUpTiming: "1 Month",
+    workingMemoryUpdates: { promisesMade: "Check in after 1 month if no reply" },
+  };
+  const expected = {
+    shouldFollowUp: true,
+    followUpTiming: ["1 month", "next month"],
+    "workingMemoryUpdates.promisesMade": "*",
+    attachmentUrls: null,
+  };
+  assert.deepEqual(checkFields(reply, expected), { ok: true, detail: "every field matches" });
+});
+
+test("a fields check fails on a wrong value, and * needs a non-empty value", () => {
+  const reply = { ...VALID_REPLY, shouldFollowUp: false, workingMemoryUpdates: null };
+  const result = checkFields(reply, { shouldFollowUp: true, followUpTiming: "1 month", "workingMemoryUpdates.promisesMade": "*" });
+  assert.equal(result.ok, false);
+  assert.match(result.detail, /shouldFollowUp is false, expected true/);
+  assert.match(result.detail, /followUpTiming is null, expected "1 month"/);
+  assert.match(result.detail, /workingMemoryUpdates\.promisesMade is undefined, expected a value/);
+});
+
+test("a leadsWith check looks only at the first sentence, ignoring URLs", () => {
+  const reply = { ...VALID_REPLY, response: "Fly into Sabiha Gökçen (SAW). Istanbul Airport also works.\nhttps://www.doctours.com/clinic/heva" };
+  assert.equal(checkLeadsWith(reply, ["Sabiha", "SAW"]).ok, true);
+  const later = checkLeadsWith(reply, ["Istanbul Airport"]);
+  assert.equal(later.ok, false);
+  assert.match(later.detail, /first sentence is "Fly into Sabiha Gökçen \(SAW\)"/);
 });

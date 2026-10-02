@@ -74,11 +74,24 @@ export function checkNoUrl(reply: Reply): CheckResult {
   return { ok: urls.length === 0, detail: urls.length ? `has URL ${urls.join(", ")}` : "has no URL" };
 }
 
-export function countSentences(text: string): number {
+// Sentences split on ".", "?" and "!" after removing URLs.
+function sentences(text: string): string[] {
   return text
     .replace(URL_PATTERN, "")
     .split(/[.?!]/)
-    .filter((part) => part.trim().length > 0).length;
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+export function countSentences(text: string): number {
+  return sentences(text).length;
+}
+
+// The Reply's first sentence mentions one of the alternatives, so the answer leads with it.
+export function checkLeadsWith(reply: Reply, alternatives: string[]): CheckResult {
+  const [first = ""] = sentences(reply.response);
+  const ok = alternatives.some((alternative) => mentions(first, alternative));
+  return { ok, detail: `${ok ? "leads with" : "doesn't lead with"} one of ${quoted(alternatives)}; first sentence is "${first}"` };
 }
 
 export function checkMaxSentences(reply: Reply, max: number): CheckResult {
@@ -110,6 +123,32 @@ export function checkCalls(calls: ToolCallTrace[], expected: ExpectedCall[]): Ch
     ok: missing.length === 0,
     detail: missing.length ? `no successful call to ${missing.map(describe).join(", ")}` : "made every expected tool call",
   };
+}
+
+// An exact value, "*" for any non-empty value, or a list of acceptable strings. Strings compare ignoring case.
+export type FieldExpectation = boolean | number | null | string | string[];
+
+function fieldAt(reply: Reply, path: string): unknown {
+  return path.split(".").reduce<unknown>((value, key) => (value == null ? undefined : (value as Record<string, unknown>)[key]), reply);
+}
+
+function fieldMatches(actual: unknown, expected: FieldExpectation): boolean {
+  if (expected === "*") return actual != null && actual !== "";
+  const accepted = Array.isArray(expected) ? expected : [expected];
+  return accepted.some((value) =>
+    typeof value === "string" && typeof actual === "string" ? value.toLowerCase() === actual.toLowerCase() : value === actual,
+  );
+}
+
+// Each dotted path into the Reply, such as "workingMemoryUpdates.promisesMade", must hold the expected value.
+export function checkFields(reply: Reply, expected: Record<string, FieldExpectation>): CheckResult {
+  const describe = (value: FieldExpectation) =>
+    value === "*" ? "a value" : Array.isArray(value) ? `one of ${quoted(value)}` : JSON.stringify(value);
+  const wrong = Object.entries(expected)
+    .map(([path, value]) => ({ path, value, actual: fieldAt(reply, path) }))
+    .filter(({ value, actual }) => !fieldMatches(actual, value))
+    .map(({ path, value, actual }) => `${path} is ${JSON.stringify(actual) ?? "undefined"}, expected ${describe(value)}`);
+  return { ok: wrong.length === 0, detail: wrong.length ? wrong.join("; ") : "every field matches" };
 }
 
 export interface ExpectedSkills {

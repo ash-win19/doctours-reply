@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { respond, type PipelineTrace } from "../src/pipeline.ts";
-import { DraftingError, type CreateResponse } from "../src/model-calls.ts";
+import { DraftingError, tokenUsage, type CreateResponse } from "../src/model-calls.ts";
 import { SetupError } from "../src/errors.ts";
 import { loadSkillRegistry } from "../src/skills.ts";
 import { PACKET_CONTEXT, loadContext } from "../src/patient-context.ts";
@@ -191,4 +191,79 @@ test("baseline mode fills the original prompt and tools from a swapped context",
   const { trace } = await respond("done", "baseline", { ...options(model.create), context: leadPatient });
   assert.ok((model.requests[0].instructions as string).includes(leadPatient.PATIENT_SUMMARY));
   assert.equal((trace.toolCalls![0].output as { hasImages: boolean }).hasImages, false);
+});
+
+const FABRICATED = { ...VALID_REPLY, response: "Pay using the link below.\nhttps://www.doctours.com/payment/made-up" };
+
+test("in the default mode, a Reply from the baseline fallback is validated too", async () => {
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
+    [functionCall("submitReply", FABRICATED)],
+    [functionCall("submitReply", FABRICATED)],
+  ]);
+  const { reply, trace } = await respond("How do I pay?", "default", options(model.create));
+  assert.equal(reply.response, "Pay using the link below.");
+  assert.equal((trace as PipelineTrace).responder!.validation!.runs.length, 2);
+});
+
+test("baseline mode stays the untouched before, with no validator", async () => {
+  const model = scriptedModel([[functionCall("submitReply", FABRICATED)]]);
+  const { reply, trace } = await respond("How do I pay?", "baseline", options(model.create));
+  assert.equal(reply.response, FABRICATED.response);
+  assert.equal((trace as { validation?: unknown }).validation, undefined);
+});
+
+test("card digits that weren't redacted still never reach the Reply", async () => {
+  // Fails the Luhn check, so the guards let it through.
+  const message = "my card number is 4111 1111 1111 1112, can you check it?";
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision())],
+    [functionCall("submitReply", { ...VALID_REPLY, response: "I can't check 4111 1111 1111 1112 for you." })],
+  ]);
+  const { reply } = await respond(message, "default", options(model.create));
+  assert.equal(reply.response, "I can't check for you.");
+});
+
+test("an Escalation submitted by the baseline fallback skips the validator and keeps escalate", async () => {
+  const escalation = { ...VALID_REPLY, escalate: true, escalationReason: "refund", response: "I'm getting a person for you. Silver is $9." };
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
+    [functionCall("submitReply", escalation)],
+  ]);
+  const { reply, trace } = await respond("refund me", "default", options(model.create));
+  assert.equal(reply.escalate, true);
+  assert.equal(reply.response, escalation.response);
+  assert.equal(model.requests.length, 2);
+  assert.deepEqual((trace as PipelineTrace).responder!.validation!.runs, []);
+});
+
+test("a repair can't change escalate, so the first version ships when it tries", async () => {
+  const invented = { ...VALID_REPLY, response: "Silver is $9." };
+  const flipped = { ...VALID_REPLY, escalate: true, escalationReason: "why", response: "I'm getting a person for you." };
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
+    [functionCall("submitReply", invented)],
+    [functionCall("submitReply", flipped)],
+  ]);
+  const { reply, trace } = await respond("How much?", "default", options(model.create));
+  assert.equal(reply.escalate, false);
+  assert.equal(reply.response, "Silver is $9.");
+  assert.equal((trace as PipelineTrace).responder!.validation!.shipped, "first");
+});
+
+test("the call-history subagent runs on the triage model, nested under the message's trace", async () => {
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["call-history"] }))],
+    [functionCall("askCallHistory", { question: "What did we talk about on the call?" })],
+    [functionCall("submitAnswer", { answer: "Your hairline and your 4C curls.", callIds: ["66666666-6666-4666-8666-666666666666"] })],
+    [functionCall("submitReply", VALID_REPLY)],
+  ]);
+  const { trace } = await respond("what did we talk about on the call?", "default", options(model.create));
+  assert.equal(model.requests[2].model, "triage-model");
+  const pipelineTrace = trace as PipelineTrace;
+  assert.deepEqual(pipelineTrace.modelCalls.map((call) => call.step), ["triage", "responder", "callHistory", "responder"]);
+  const responder = pipelineTrace.responder!;
+  assert.ok("subagents" in responder);
+  assert.equal(responder.subagents[0].subagent, "callHistory");
+  assert.deepEqual(tokenUsage(trace), { inputTokens: 400, outputTokens: 200 });
 });

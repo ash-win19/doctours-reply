@@ -1,0 +1,82 @@
+[
+  {
+    "id": "consult-free",
+    "group": "consultation",
+    "rule": "Packet, Expected outputs: the consultation answer says it is free and includes the Consultation link. Source, OPERATIONAL KNOWLEDGE 8: it is a phone call; a URL goes on the last line.",
+    "text": "Is the consultation free?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "free",
+          "no cost",
+          "no charge"
+        ],
+        "phone"
+      ],
+      "lastLineUrl": "https://www.doctours.com/consultation"
+    }
+  },
+  {
+    "id": "consult-video",
+    "group": "consultation",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 8: the Consultation is a phone call, never a video call or join link.",
+    "text": "Is the consultation a video call? Do I get a Zoom link?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "phone"
+      ],
+      "excludes": [
+        "zoom link is",
+        "join link is",
+        "calendar invite"
+      ]
+    }
+  },
+  {
+    "id": "consult-surgeon",
+    "group": "consultation",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 8: the Consultation is with Doctours' team, not the clinic or surgeon; the surgeon only after a Deposit.",
+    "text": "Will I get to speak with the surgeon on the consultation?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "deposit"
+      ]
+    }
+  },
+  {
+    "id": "consult-reschedule",
+    "group": "consultation",
+    "rule": "Source, CONSULTATION RESCHEDULING: call getConsultationRescheduleLinkTool; on no_consultation, offer the Consultation link on the last line.",
+    "text": "I need to reschedule my consultation, something came up.",
+    "expect": {
+      "escalate": false,
+      "lastLineUrl": "https://www.doctours.com/consultation",
+      "calls": [
+        {
+          "tool": "getConsultationRescheduleLinkTool"
+        }
+      ]
+    }
+  },
+  {
+    "id": "consult-mixed-price",
+    "group": "consultation",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 8 with PACKAGE & CLINIC FACTS: a mixed message needs consultation and clinic-packages.",
+    "text": "Is the consultation free? And how much is Heva's Silver package?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "free",
+          "no cost",
+          "no charge"
+        ],
+        "3,000"
+      ],
+      "lastLineUrl": "https://www.doctours.com/consultation"
+    }
+  }
+]

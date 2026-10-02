@@ -10,6 +10,8 @@ import {
   checkCalls,
   checkEscalate,
   checkExcludes,
+  checkFields,
+  checkLeadsWith,
   checkIncludes,
   checkLastLineUrl,
   checkMaxAttachments,
@@ -36,7 +38,13 @@ const ExpectSchema = z
       .array(z.object({ tool: z.string().min(1), argsInclude: z.array(z.string()).optional() }).strict())
       .min(1)
       .optional(),
+    // Dotted paths into the Reply, such as "followUpTiming" or "workingMemoryUpdates.promisesMade".
+    fields: z
+      .record(z.string(), z.union([z.boolean(), z.number(), z.null(), z.string(), z.array(z.string()).min(1)]))
+      .optional(),
     skills: z.object({ includes: z.array(z.string()).optional(), excludes: z.array(z.string()).optional() }).strict().optional(),
+    // The first sentence mentions one of these.
+    leadsWith: z.array(z.string()).min(1).optional(),
   })
   .strict();
 
@@ -124,7 +132,9 @@ const CHECKS: { [Name in keyof Expect]-?: Check<NonNullable<Expect[Name]>> } = {
   maxSentences: checkMaxSentences,
   maxAttachments: checkMaxAttachments,
   calls: (_reply, expected, observed) => checkCalls(observed.toolCalls, expected),
+  fields: (reply, expected) => checkFields(reply, expected),
   skills: (_reply, expected, observed) => checkSkills(observed.skills, expected),
+  leadsWith: checkLeadsWith,
 };
 
 // Every Reply must match the schema with a null templateId, whatever the case expects.

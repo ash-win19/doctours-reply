@@ -53,9 +53,11 @@ A context file is a JSON object with any of the packet constants' keys, such as 
 
 The packet functions return Jordan's data whatever the context says, so a context file should override every tool whose packet result would contradict it, such as the Patient's name, Pipeline Status, assessment, Matched clinics, photos, calls and consultation.
 
-Two fixtures live in `evals/contexts/`:
+Fixtures live in `evals/contexts/`:
 - `lead.json` is a brand-new LEAD Patient: no name, procedure area, photos or chat history, with overrides for every Patient-specific tool.
 - `lead-photos-asked.json` is a LEAD Patient who has answered the area and name asks and was just sent the photo-upload link, with no photos saved yet.
+- `clinic-own-websites.json` is the packet Patient, but each clinic's own `url` differs from its Doctours page, so a website case can tell which one went out.
+- `heva-preferred-airport.json` is the packet Patient, with Heva's Packages returning a `preferredAirport` (SAW) and nearby airports.
 
 ## Modes
 
@@ -74,9 +76,35 @@ Escalation is settled before any Reply is drafted, and the responder can still e
    - the skills triage chose (`prompts/skills/`), plus every skill they `requires`
 
    Its tools are the loaded skills' tools plus `loadSkill`, `escalate` and `submitReply`. `loadSkill` pulls in another skill's text and tools mid-turn. `escalate` returns the same template Reply as step 3. `updateWorkingMemory` is never exposed, so memory changes come back only in `workingMemoryUpdates`. Code sets `templateId` to null, and a submitted Reply never escalates.
-5. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
+5. **Call-history subagent** (ADR 0003). The `call-history` skill is new behaviour that wraps one source rule, TOOL USAGE's "Use getFullCallsTool only when you need full call context and there has been a very recent call listed in context." It gives the responder one tool, `askCallHistory({ question })`, which runs a separate `TRIAGE_MODEL` call (`src/call-history.ts`, `prompts/call-history/`):
+   - The reader fetches `getFullCallsTool` itself, reads the summaries and transcripts, and answers in at most 3 sentences, or says the calls don't cover the question. The cap is in its prompt and the answer schema, and code never cuts the answer.
+   - Card numbers in the answer are redacted before the responder or the trace sees it, because call records aren't redacted the way Patient messages are.
+   - The responder gets only the answer, so on the skills path transcript text never enters its context. A message that falls back to the baseline responder still has `getFullCallsTool`, because the baseline stays the original prompt.
+   - The trace adds `{ subagent: "callHistory", question, answer, callIds, usage, latencyMs, error }` to the responder's `subagents`. The reader's model calls also go into `modelCalls` under the step `callHistory`, so its tokens count in eval totals.
+   - If the reader still fails after retries, its record keeps the usage, latency and error, and the message fails like any other drafting failure and escalates. A Reply written without the answer could only guess at what was said.
+   - Subagent tools are listed by name in `src/tools.ts` and defined in one map in `src/subagent-tools.ts`, so adding another means one name and one map entry.
+6. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
+7. **Validator.** Every Reply that isn't an Escalation goes through `src/validator.ts` before output, including a Reply from the baseline fallback. Escalations from the guards, triage or the `escalate` tool skip it, and it never changes `escalate`. See [Validator](#validator).
 
 The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `skills`, `baseline` or `drafting-failed`), the skills triage chose and any loaded mid-turn, every tool call with its arguments and result, and every model call tagged with its step. Trace files never hold card digits in this mode. Baseline mode still sends the raw text to the model, so its `userMessage` does.
+
+### Validator
+
+Some failures are cheap to catch in code, so every Reply is checked against what this turn's tool results said. As tool results arrive, the responder collects their URLs, clinic slugs and money values: numbers under a price, amount, deposit, fee or cost key, plus numbers written next to "$" or "USD". Ids and counts never count. The pipeline adds the card digit runs the guards found in the Patient's raw message. The `askCallHistory` answer is not evidence: it's a model's summary of the calls, so a URL or amount in it reaches a Reply only if a packet tool returned it this turn. A Reply that escalates is never validated, and the validator never changes `escalate`.
+
+Fixed in code right away:
+- A URL that no tool returned this turn and that isn't on the static allowlist is removed, along with its line. This also asks for a repair, so a Reply isn't left saying "the link below" with no link. The allowlist is the Consultation link, the image-upload link, and `https://www.doctours.com/clinic/{slug}` for a slug a tool returned this turn. The core prompt is filled from the same constants in `src/validator.ts`.
+- The Patient's card numbers are removed: whole runs anywhere, and the last four only where they follow "ending in" or "last four" style wording.
+- URLs move to the last lines, one per line, in order of first mention. A URL inside a sentence becomes "the link below".
+- Markdown markers are stripped. URLs keep their underscores.
+- Field consistency: `escalationReason` is null when `escalate` is false, `followUpTiming` is null when `shouldFollowUp` is false, and an empty `attachmentUrls` is null. The tool loop sets `templateId` to null on every submitted Reply.
+
+Checked, then repaired once:
+- Every amount next to "$" or "USD" is a money value in this turn's tool results, or on the policy list (the $25 cancellation fee).
+- No banned phrases: an assessment turnaround window (a window tied to the assessment being ready, done, back, sent or delivered), "I'll get back to you", saying "a coordinator will…" or "someone from our team", and advice to bring, pack, wear, buy or pick out a head covering. The list is `BANNED_PHRASES`, with the source rule next to each entry.
+- `attachmentUrls` has at most 3 entries, all returned by a tool.
+
+If anything still fails, the responder gets one repair turn. A `user`-role message lists the failures. The model may make up to 2 lookups, and its last call must submit the Reply again. Further submitReply calls in the response that asked for the repair don't count as the repair. The version with fewer failures ships, unless the repair changed `escalate`, in which case the first version ships. If the repair doesn't come back as a valid Reply, the first version ships. Anything still failing ships anyway. The trace's `responder.validation` holds each run's fixes and check results, whether repair ran, and which version shipped.
 
 ### Skills
 
@@ -101,6 +129,13 @@ sources: [PRE_CLINICAL_SENT Steps 0 to 3, REVERSIBILITY, ...]
 | `decision-funnel` | Choosing a clinic and Package, booking from the assessment, Payment and Checkout links, tentative dates, what can change later. Requires `clinic-packages` | `getLatestAssessmentTool`, `getPatientContextTool`, `updateUserClinicPreferencesTool`, `getPaymentLinkTool`, `issuePromoCodeTool` |
 | `payments` | Financing, Layaway, insurance, CareCredit and Cherry, Deposit and balance terms, a Deposit paid to a clinic, promos. Requires `clinic-packages` | `issuePromoCodeTool`, `getPaymentLinkTool` |
 | `intake-photos` | Collecting procedure area, name and intake photos: the first-contact introduction, the one collection ask, uploads and "done", photo delays, a Patient's own photos (at most 3 attached) | `getPatientImagesTool`, `updateUserTool` |
+| `consultation` | Whether the free Consultation is free (a phone call with Doctours' team, with the Consultation link last), booking, confirming or rescheduling it. Its PHONE CONTACT slip-through line now calls `escalate`, per ADR 0002 | `getConsultationRescheduleLinkTool` |
+| `pause` | A Patient stepping back: the dated Follow-up close, `shouldFollowUp`, `followUpTiming` and `promisesMade`. Overrides DECISION STEPS advancement (decision-funnel), the Intake item ask (intake-photos), and the core's NO STALLING rule for the dated Follow-up | none |
+| `travel` | Flights, travel timing, airports, hotels, transfers, passports. Requires `clinic-packages` | `getClinicPackagesTool` |
+| `clinic-contact` | A clinic's website (the Doctours clinic page first), and whether the Patient can message a clinic themselves | `getAllClinicsTool`, `getSavedClinicsTool` |
+| `assessment-aftercare` | What the Assessment shows, revision requests, no turnaround windows, what to wear after, finasteride and minoxidil. Overrides the core's NO STALLING rule for the one revision commitment | `getLatestAssessmentTool` |
+| `creator` | Creator and partnership requests, answered only with Molly's email. The source's claim that these are routed to a person first is dropped, since ADR 0002 answers them | none |
+| `call-history` | What was said, asked or decided on a past call with Doctours, such as the Consultation. Its one tool runs the call-history reader | `askCallHistory` |
 
 ### baseline
 
@@ -140,9 +175,9 @@ A case is one Patient message plus deterministic checks:
 
 A case can also name a Patient context file with `"context": "evals/contexts/lead.json"`, and its message then runs as that Patient. Without one it runs as the packet's Patient.
 
-`group` is the skill the case exercises, or `escalation`. `rule` cites the source rule it tests. The checks are `escalate` (exact match), `calls` (each listed tool ran without error, with arguments containing each `argsInclude` text), `skills` (`includes` and `excludes` lists checked against the skills that ran: the ones triage chose plus any loaded mid-turn), `includes` and `excludes` (substrings, ignoring case; an `includes` entry can be a list of alternatives, any one of which is enough), `lastLineUrl` (the Reply's last line is exactly that URL), `noUrl`, `maxSentences` (split on `.`, `?` and `!` after removing URLs) and `maxAttachments`. Numbers match however they're written, as whole numbers: `"$3,000"` matches "3000 USD" but `"$500"` doesn't match inside "$4,500". Every case also checks that the Reply matches the schema with a null `templateId`. An unknown check name is rejected, so a typo can't pass silently.
+`group` is the skill the case exercises, or `escalation`. `rule` cites the source rule it tests. The checks are `escalate` (exact match), `calls` (each listed tool ran without error, with arguments containing each `argsInclude` text), `skills` (`includes` and `excludes` lists checked against the skills that ran: the ones triage chose plus any loaded mid-turn), `fields` (dotted paths into the Reply such as `followUpTiming` or `workingMemoryUpdates.promisesMade` hold an exact value, any of a list of strings, or `"*"` for any non-empty value; strings compare ignoring case), `includes` and `excludes` (substrings, ignoring case; an `includes` entry can be a list of alternatives, any one of which is enough), `leadsWith` (the first sentence mentions one of a list of alternatives), `lastLineUrl` (the Reply's last line is exactly that URL), `noUrl`, `maxSentences` (split on `.`, `?` and `!` after removing URLs) and `maxAttachments`. Numbers match however they're written, as whole numbers: `"$3,000"` matches "3000 USD" but `"$500"` doesn't match inside "$4,500". Every case also checks that the Reply matches the schema with a null `templateId`. An unknown check name is rejected, so a typo can't pass silently.
 
-`evals/cases/clinic-packages.json`, `decision-funnel.json` and `payments.json` hold 16 cases for the first three skills, each citing the source section it tests. `evals/cases/intake-photos.json` runs six cases as a LEAD Patient: the first-contact introduction, the area ask, the photo ask with "send done", a hair-state delay, a shared name, and "done" when no photos were saved (against `lead-photos-asked.json`, since that rule only applies after a photo ask). Two more run as the packet Patient: "Can I see my photos?" must load intake-photos, and "What does Dr. Hakan Clinic cost?" must not.
+There is one case file per skill, each case citing the source section it tests: `clinic-packages.json`, `decision-funnel.json` and `payments.json` (16 cases), plus `consultation.json`, `pause.json`, `travel.json`, `clinic-contact.json`, `assessment-aftercare.json` and `creator.json` (26 cases). Every file for the later six has at least one mixed message that needs two skills. `call-history.json` holds 3 cases for the call-history reader: what the call covered, a detail from the transcript, and a question the calls don't cover. `intake-photos.json` runs six cases as a LEAD Patient: the first-contact introduction, the area ask, the photo ask with "send done", a hair-state delay, a shared name, and "done" when no photos were saved (against `lead-photos-asked.json`, since that rule only applies after a photo ask). Two more run as the packet Patient: "Can I see my photos?" must load intake-photos, and "What does Dr. Hakan Clinic cost?" must not.
 
 `evals/cases/escalation.json` covers both sides of every line in ADR 0002: 11 messages that must escalate, including paraphrases triage has to catch, and 7 that must be answered.
 

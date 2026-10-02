@@ -1,0 +1,94 @@
+[
+  {
+    "id": "pause-saving",
+    "group": "pause",
+    "rule": "Source, TIME-BOUND PAUSE: saving funds gets all three beats (take your time, a dated check-in, an offer to adjust it), followUpTiming 1 month, and a promisesMade note.",
+    "text": "I need to save up first",
+    "expect": {
+      "escalate": false,
+      "noUrl": true,
+      "fields": {
+        "shouldFollowUp": true,
+        "followUpTiming": "1 month",
+        "workingMemoryUpdates.promisesMade": "*"
+      },
+      "includes": [
+        [
+          "check in",
+          "check back",
+          "follow up",
+          "reach out"
+        ],
+        [
+          "more or less time",
+          "more or less",
+          "adjust",
+          "move that",
+          "change that"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "pause-reviewing",
+    "group": "pause",
+    "rule": "Source, TIME-BOUND PAUSE: reviewing the clinics is a pause, never an open-ended take your time.",
+    "text": "Let me look over the clinics and I'll get back to you.",
+    "expect": {
+      "escalate": false,
+      "noUrl": true,
+      "excludes": [
+        "whenever you're ready"
+      ],
+      "fields": {
+        "shouldFollowUp": true,
+        "followUpTiming": [
+          "1 month",
+          "a month",
+          "one month",
+          "next month"
+        ]
+      }
+    }
+  },
+  {
+    "id": "pause-named-window",
+    "group": "pause",
+    "rule": "Source, TIME-BOUND PAUSE and GUIDELINES Follow-up item: confirm the window the Patient named.",
+    "text": "Can you check back with me in two weeks? I'm not ready yet.",
+    "expect": {
+      "escalate": false,
+      "noUrl": true,
+      "fields": {
+        "shouldFollowUp": true,
+        "followUpTiming": [
+          "2 weeks",
+          "two weeks",
+          "in two weeks",
+          "in 2 weeks"
+        ]
+      }
+    }
+  },
+  {
+    "id": "pause-mixed-question",
+    "group": "pause",
+    "rule": "Source, TIME-BOUND PAUSE: answer the separate substantive question first, then the pause close (with clinic-packages).",
+    "text": "I'm going to wait until I've saved up. Quick question though, does Heva's Gold come with more hotel nights than Silver?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Gold",
+        [
+          "4 nights",
+          "four nights",
+          "4 hotel nights",
+          "four hotel nights"
+        ]
+      ],
+      "fields": {
+        "shouldFollowUp": true
+      }
+    }
+  }
+]
