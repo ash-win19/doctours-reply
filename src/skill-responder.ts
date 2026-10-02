@@ -1,6 +1,8 @@
 import { z } from "zod";
+import { ASK_CALL_HISTORY, AskCallHistoryInput, askCallHistory, askCallHistoryTool } from "./call-history.ts";
+import { SetupError } from "./errors.ts";
 import { escalationReply } from "./escalation.ts";
-import { asDraftingError, type ModelOptions } from "./model-calls.ts";
+import { DraftingError, asDraftingError, tokenUsage, type ModelOptions } from "./model-calls.ts";
 import {
   buildCorePrompt,
   buildResponderSystemPrompt,
@@ -13,9 +15,20 @@ import type { Skill, SkillRegistry } from "./skills.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
 import { runTool, toolDefinition, toolsNamed } from "./tools.ts";
 
+// One subagent call made for this message. Its model calls are also in modelCalls, under their own step.
+export interface SubagentRecord {
+  subagent: "callHistory";
+  question: string;
+  answer: string;
+  callIds: string[];
+  usage: { inputTokens: number; outputTokens: number };
+  latencyMs: number;
+}
+
 export interface SkillResponderTrace extends ResponderTrace {
   // Skills triage chose, and skills the responder loaded mid-turn with loadSkill.
   skills: { chosen: string[]; loaded: string[] };
+  subagents: SubagentRecord[];
 }
 
 const LOAD_SKILL = "loadSkill";
@@ -34,15 +47,17 @@ export interface SkillResponderInput {
   registry: SkillRegistry;
   // Skill ids triage chose. All must be in the registry.
   chosen: string[];
-  patient: CoreContext;
+  patient: CoreContext & { SUPABASE_CHAT_ID: string };
   // The module for the Patient's Pipeline Status, which code picks.
   status: string | null;
+  // The small model subagents run on. Defaults to the responder's model.
+  subagentModel?: string;
 }
 
 // Writes the Reply from the core, the Pipeline Status module and the chosen skills, with only those skills' tools.
 export async function respondWithSkills(
   message: string,
-  { registry, chosen, patient, status }: SkillResponderInput,
+  { registry, chosen, patient, status, subagentModel }: SkillResponderInput,
   options: ModelOptions,
 ): Promise<{ reply: Reply; trace: SkillResponderTrace }> {
   const loaded: Skill[] = registry.resolve(chosen);
@@ -55,6 +70,7 @@ export async function respondWithSkills(
     }),
     userMessage: buildResponderUserMessage(message, patient),
     skills: { chosen, loaded: [] },
+    subagents: [],
     modelCalls: [],
     toolCalls: [],
     finalOutput: null,
@@ -78,7 +94,35 @@ export async function respondWithSkills(
     return { isError: false, output: added.map(formatSkill).join("\n\n") };
   }
 
-  function callTool(name: string, input: unknown): ToolOutcome {
+  // Only the subagent's short answer comes back, so call transcripts never enter this context.
+  async function askCalls(input: unknown): Promise<ToolOutcome> {
+    const parsed = AskCallHistoryInput.safeParse(input);
+    if (!parsed.success) return { isError: true, output: `${ASK_CALL_HISTORY} takes { question }` };
+    const { question } = parsed.data;
+    try {
+      const result = await askCallHistory(
+        question,
+        { create: options.create, model: subagentModel ?? options.model },
+        { chatId: patient.SUPABASE_CHAT_ID },
+      );
+      trace.modelCalls.push(...result.trace.modelCalls);
+      trace.subagents.push({
+        subagent: "callHistory",
+        question,
+        answer: result.answer,
+        callIds: result.callIds,
+        usage: tokenUsage(result.trace),
+        latencyMs: result.trace.modelCalls.reduce((total, call) => total + call.latencyMs, 0),
+      });
+      return { isError: false, output: result.answer };
+    } catch (error) {
+      if (error instanceof DraftingError) trace.modelCalls.push(...error.trace.modelCalls);
+      if (error instanceof SetupError) throw error;
+      throw new DraftingError(`Call history: ${error instanceof Error ? error.message : String(error)}`, trace);
+    }
+  }
+
+  function callTool(name: string, input: unknown): ToolOutcome | Promise<ToolOutcome> {
     if (name === LOAD_SKILL) return loadSkill(input);
     if (name === ESCALATE) {
       const parsed = EscalateInput.safeParse(input);
@@ -88,6 +132,7 @@ export async function respondWithSkills(
     if (!allowedTools().includes(name)) {
       return { isError: true, output: `${name} isn't available. Load the skill that has it with ${LOAD_SKILL}.` };
     }
+    if (name === ASK_CALL_HISTORY) return askCalls(input);
     return runTool(name, input);
   }
 
@@ -95,7 +140,12 @@ export async function respondWithSkills(
     const reply = await runToolLoop(
       {
         trace,
-        tools: () => [...toolsNamed(allowedTools()), loadSkillTool, escalateTool],
+        tools: () => [
+          ...toolsNamed(allowedTools()),
+          ...(allowedTools().includes(ASK_CALL_HISTORY) ? [askCallHistoryTool] : []),
+          loadSkillTool,
+          escalateTool,
+        ],
         callTool,
         // Only the escalate tool escalates, so a submitted Reply never does.
         onSubmit: (submitted) => ({ ...submitted, templateId: null, escalate: false, escalationReason: null }),

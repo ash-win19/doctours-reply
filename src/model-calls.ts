@@ -14,8 +14,8 @@ export interface ModelOptions {
   model: string;
 }
 
-// The part of the work a model call belongs to.
-export type Step = "triage" | "responder";
+// The part of the work a model call belongs to. "callHistory" is the subagent that reads call transcripts.
+export type Step = "triage" | "responder" | "callHistory";
 
 export interface ModelCallTrace {
   step: Step;

@@ -1,0 +1,69 @@
+[
+  {
+    "id": "ch-call-topics",
+    "group": "call-history",
+    "rule": "AW-100: a question about a call is answered by the call-history subagent from the full call records.",
+    "text": "What did we talk about on the call?",
+    "expect": {
+      "escalate": false,
+      "calls": [
+        {
+          "tool": "askCallHistory"
+        }
+      ],
+      "includes": [
+        "hairline"
+      ],
+      "maxSentences": 4
+    }
+  },
+  {
+    "id": "ch-hair-type",
+    "group": "call-history",
+    "rule": "AW-100: the subagent reads the transcript, where Jordan said their hair is 4C.",
+    "text": "Did I mention my hair type on the call?",
+    "expect": {
+      "escalate": false,
+      "calls": [
+        {
+          "tool": "askCallHistory"
+        }
+      ],
+      "includes": [
+        "4C"
+      ]
+    }
+  },
+  {
+    "id": "ch-not-covered",
+    "group": "call-history",
+    "rule": "AW-100: when the calls don't cover the question, the Reply says so instead of guessing. Source, GUIDELINES: say so honestly rather than fabricating an answer.",
+    "text": "Did we go over my budget on the call?",
+    "expect": {
+      "escalate": false,
+      "calls": [
+        {
+          "tool": "askCallHistory"
+        }
+      ],
+      "excludes": [
+        "$"
+      ],
+      "includes": [
+        [
+          "didn't",
+          "did not",
+          "don't have",
+          "doesn't",
+          "does not",
+          "wasn't",
+          "was not",
+          "no mention",
+          "not covered",
+          "never came up",
+          "didn't come up"
+        ]
+      ]
+    }
+  }
+]

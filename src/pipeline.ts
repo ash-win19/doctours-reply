@@ -116,7 +116,7 @@ export async function respond(
     trace.path = "skills";
     const { reply, trace: responderTrace } = await respondWithSkills(
       screening.redactedText,
-      { registry, chosen: decision.skills, patient: context, status },
+      { registry, chosen: decision.skills, patient: context, status, subagentModel: options.triageModel },
       responderOptions,
     );
     trace.responder = detachCalls(responderTrace, trace);

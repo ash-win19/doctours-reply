@@ -45,7 +45,8 @@ Escalation is settled before any Reply is drafted, and the responder can still e
    - the skills triage chose (`prompts/skills/`), plus every skill they `requires`
 
    Its tools are the loaded skills' tools plus `loadSkill`, `escalate` and `submitReply`. `loadSkill` pulls in another skill's text and tools mid-turn. `escalate` returns the same template Reply as step 3. `updateWorkingMemory` is never exposed, so memory changes come back only in `workingMemoryUpdates`. Code sets `templateId` to null, and a submitted Reply never escalates.
-5. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), or the Pipeline Status has no module, the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
+5. **Call-history subagent.** The `call-history` skill gives the responder one tool, `askCallHistory({ question })`. It runs a separate `TRIAGE_MODEL` call (`src/call-history.ts`, `prompts/call-history/`) that fetches `getFullCalls` itself, reads the summaries and transcripts, and answers in at most 3 sentences, or says the calls don't cover it. The responder gets only that answer, so transcript text never enters its context. The trace adds `{ subagent: "callHistory", question, answer, callIds, usage, latencyMs }` to the responder's `subagents`, and the subagent's model calls go into `modelCalls` under the step `callHistory`, so its tokens count in eval totals. If the subagent's call still fails after retries, the message fails like any other drafting failure.
+6. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), or the Pipeline Status has no module, the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
 
 The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `skills`, `baseline` or `drafting-failed`), the skills triage chose and any loaded mid-turn, every tool call with its arguments and result, and every model call tagged with its step. Trace files never hold card digits in this mode. Baseline mode still sends the raw text to the model, so its `userMessage` does.
 
@@ -71,6 +72,7 @@ sources: [PRE_CLINICAL_SENT Steps 0 to 3, REVERSIBILITY, ...]
 | `clinic-packages` | Package prices, Deposits, inclusions, hotel nights, bookable weekdays, doctors, Clinic status, afro specialty, a clinic's direct quote | `getAllClinicsTool`, `getClinicPackagesTool`, `getClinicDoctorsTool`, `getSavedClinicsTool` |
 | `decision-funnel` | Choosing a clinic and Package, booking from the assessment, Payment and Checkout links, tentative dates, what can change later. Requires `clinic-packages` | `getLatestAssessmentTool`, `getPatientContextTool`, `updateUserClinicPreferencesTool`, `getPaymentLinkTool`, `issuePromoCodeTool` |
 | `payments` | Financing, Layaway, insurance, CareCredit and Cherry, Deposit and balance terms, a Deposit paid to a clinic, promos. Requires `clinic-packages` | `issuePromoCodeTool`, `getPaymentLinkTool` |
+| `call-history` | What was said, asked or decided on a past call. Its one tool runs the call-history subagent | `askCallHistory` |
 
 ### baseline
 
@@ -110,7 +112,7 @@ A case is one Patient message plus deterministic checks:
 
 `group` is the skill the case exercises, or `escalation`. `rule` cites the source rule it tests. The checks are `escalate` (exact match), `calls` (each listed tool ran without error, with arguments containing each `argsInclude` text), `includes` and `excludes` (substrings, ignoring case; an `includes` entry can be a list of alternatives, any one of which is enough), `lastLineUrl` (the Reply's last line is exactly that URL), `noUrl`, `maxSentences` (split on `.`, `?` and `!` after removing URLs) and `maxAttachments`. Numbers match however they're written, as whole numbers: `"$3,000"` matches "3000 USD" but `"$500"` doesn't match inside "$4,500". Every case also checks that the Reply matches the schema with a null `templateId`. An unknown check name is rejected, so a typo can't pass silently.
 
-`evals/cases/clinic-packages.json`, `decision-funnel.json` and `payments.json` hold 16 cases for the first three skills, each citing the source section it tests.
+`evals/cases/clinic-packages.json`, `decision-funnel.json` and `payments.json` hold 16 cases for the first three skills, each citing the source section it tests. `evals/cases/call-history.json` holds 3 cases for the call-history subagent: what the call covered, a detail from the transcript, and a question the calls don't cover.
 
 `evals/cases/escalation.json` covers both sides of every line in ADR 0002: 11 messages that must escalate, including paraphrases triage has to catch, and 7 that must be answered.
 
