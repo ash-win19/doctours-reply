@@ -85,13 +85,13 @@ test("loadSkill for an unknown or loaded skill says so", async () => {
   const { model, result } = run(
     ["payments"],
     [
-      [functionCall("loadSkill", { id: "travel" })],
+      [functionCall("loadSkill", { id: "ghost" })],
       [functionCall("loadSkill", { id: "payments" })],
       [functionCall("submitReply", VALID_REPLY)],
     ],
   );
   const { trace } = await result;
-  assert.match(lastOutput(model.requests[1]), /No skill named travel/);
+  assert.match(lastOutput(model.requests[1]), /No skill named ghost/);
   assert.match(lastOutput(model.requests[2]), /already loaded/);
   assert.equal(trace.toolCalls[0].isError, true);
 });

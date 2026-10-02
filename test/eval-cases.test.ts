@@ -36,6 +36,7 @@ test("accepts a case with every check", () => {
           maxSentences: 2,
           maxAttachments: 0,
           calls: [{ tool: "getPaymentLinkTool", argsInclude: ["payment"] }],
+          fields: { shouldFollowUp: true, followUpTiming: ["1 month", "next month"], "workingMemoryUpdates.promisesMade": "*" },
         },
       },
     ]),
@@ -125,4 +126,10 @@ test("a calls check is scored against the message's tool calls", () => {
   const call = { name: "updateUserClinicPreferencesTool", input: { clinicSelection: { selectedClinicId: "heva-id" } }, output: {}, isError: false };
   assert.equal(scoreCase(evalCase, VALID_REPLY, [call]).passed, true);
   assert.equal(scoreCase(evalCase, VALID_REPLY, []).passed, false);
+});
+
+test("a fields check is scored against the Reply", () => {
+  const evalCase = { ...baseCase, expect: { fields: { shouldFollowUp: true, followUpTiming: ["1 month"] } } };
+  assert.equal(scoreCase(evalCase, { ...VALID_REPLY, shouldFollowUp: true, followUpTiming: "1 month" }).passed, true);
+  assert.equal(scoreCase(evalCase, VALID_REPLY).passed, false);
 });

@@ -71,6 +71,12 @@ sources: [PRE_CLINICAL_SENT Steps 0 to 3, REVERSIBILITY, ...]
 | `clinic-packages` | Package prices, Deposits, inclusions, hotel nights, bookable weekdays, doctors, Clinic status, afro specialty, a clinic's direct quote | `getAllClinicsTool`, `getClinicPackagesTool`, `getClinicDoctorsTool`, `getSavedClinicsTool` |
 | `decision-funnel` | Choosing a clinic and Package, booking from the assessment, Payment and Checkout links, tentative dates, what can change later. Requires `clinic-packages` | `getLatestAssessmentTool`, `getPatientContextTool`, `updateUserClinicPreferencesTool`, `getPaymentLinkTool`, `issuePromoCodeTool` |
 | `payments` | Financing, Layaway, insurance, CareCredit and Cherry, Deposit and balance terms, a Deposit paid to a clinic, promos. Requires `clinic-packages` | `issuePromoCodeTool`, `getPaymentLinkTool` |
+| `consultation` | Whether the free Consultation is free (a phone call with Doctours' team, with the Consultation link last), booking, confirming or rescheduling it. Its PHONE CONTACT slip-through line now calls `escalate`, per ADR 0002 | `getConsultationRescheduleLinkTool` |
+| `pause` | A Patient stepping back: the dated Follow-up close, `shouldFollowUp`, `followUpTiming` and `promisesMade`. Overrides DECISION STEPS advancement (decision-funnel), the Intake item ask (intake-photos), and the core's NO STALLING rule for the dated Follow-up | none |
+| `travel` | Flights, travel timing, airports, hotels, transfers, passports. Requires `clinic-packages` | `getClinicPackagesTool` |
+| `clinic-contact` | A clinic's website (the Doctours clinic page first), and whether the Patient can message a clinic themselves | `getAllClinicsTool`, `getSavedClinicsTool` |
+| `assessment-aftercare` | What the Assessment shows, revision requests, no turnaround windows, what to wear after, finasteride and minoxidil. Overrides the core's NO STALLING rule for the one revision commitment | `getLatestAssessmentTool` |
+| `creator` | Creator and partnership requests, answered only with Molly's email. The source's claim that these are routed to a person first is dropped, since ADR 0002 answers them | none |
 
 ### baseline
 
@@ -108,9 +114,9 @@ A case is one Patient message plus deterministic checks:
 }
 ```
 
-`group` is the skill the case exercises, or `escalation`. `rule` cites the source rule it tests. The checks are `escalate` (exact match), `calls` (each listed tool ran without error, with arguments containing each `argsInclude` text), `includes` and `excludes` (substrings, ignoring case; an `includes` entry can be a list of alternatives, any one of which is enough), `lastLineUrl` (the Reply's last line is exactly that URL), `noUrl`, `maxSentences` (split on `.`, `?` and `!` after removing URLs) and `maxAttachments`. Numbers match however they're written, as whole numbers: `"$3,000"` matches "3000 USD" but `"$500"` doesn't match inside "$4,500". Every case also checks that the Reply matches the schema with a null `templateId`. An unknown check name is rejected, so a typo can't pass silently.
+`group` is the skill the case exercises, or `escalation`. `rule` cites the source rule it tests. The checks are `escalate` (exact match), `calls` (each listed tool ran without error, with arguments containing each `argsInclude` text), `fields` (dotted paths into the Reply such as `followUpTiming` or `workingMemoryUpdates.promisesMade` hold an exact value, any of a list of strings, or `"*"` for any non-empty value; strings compare ignoring case), `includes` and `excludes` (substrings, ignoring case; an `includes` entry can be a list of alternatives, any one of which is enough), `lastLineUrl` (the Reply's last line is exactly that URL), `noUrl`, `maxSentences` (split on `.`, `?` and `!` after removing URLs) and `maxAttachments`. Numbers match however they're written, as whole numbers: `"$3,000"` matches "3000 USD" but `"$500"` doesn't match inside "$4,500". Every case also checks that the Reply matches the schema with a null `templateId`. An unknown check name is rejected, so a typo can't pass silently.
 
-`evals/cases/clinic-packages.json`, `decision-funnel.json` and `payments.json` hold 16 cases for the first three skills, each citing the source section it tests.
+There is one case file per skill, each case citing the source section it tests: `clinic-packages.json`, `decision-funnel.json` and `payments.json` (16 cases), plus `consultation.json`, `pause.json`, `travel.json`, `clinic-contact.json`, `assessment-aftercare.json` and `creator.json` (26 cases). Every file for the later six has at least one mixed message that needs two skills.
 
 `evals/cases/escalation.json` covers both sides of every line in ADR 0002: 11 messages that must escalate, including paraphrases triage has to catch, and 7 that must be answered.
 
