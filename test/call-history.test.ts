@@ -37,14 +37,34 @@ test("the reader fetches the swapped Patient's calls, using their chat id and to
   assert.doesNotMatch(text, /Thanks for hopping on/);
 });
 
-test("the 3-sentence cap is in the prompt and the answer schema, and the answer is never cut in code", async () => {
+test("a reader answer over three sentences is retried rather than truncated", async () => {
   const long = { answer: "Dr. Hakan came up. The Sapphire package was $3.2k. You asked about 4C hair. Then flights.", callIds: [CALL_ID] };
-  const model = scriptedModel([[functionCall("submitAnswer", long)]]);
+  const short = { ...long, answer: "Dr. Hakan came up. The Sapphire package was $3.2k. You asked about 4C hair and flights." };
+  const model = scriptedModel([[functionCall("submitAnswer", long)], [functionCall("submitAnswer", short)]]);
   const { answer } = await askCallHistory("what did we talk about?", options(model.create), { SUPABASE_CHAT_ID: "chat-1" });
-  assert.equal(answer, long.answer);
+  assert.equal(answer, short.answer);
+  assert.equal(model.requests.length, 2);
   const [request] = model.requests;
   assert.match(request.instructions as string, /at most 3 short sentences/);
   assert.match(JSON.stringify(request.tools), /At most 3 short sentences/);
+});
+
+test("a reader that still exceeds three sentences returns a failure with both calls recorded", async () => {
+  const long = functionCall("submitAnswer", { answer: "One. Two. Three. Four.", callIds: [CALL_ID] });
+  const model = scriptedModel([[long], [long]]);
+  const { answer, trace } = await askCallHistory("what did we talk about?", options(model.create), { SUPABASE_CHAT_ID: "chat-1" });
+  assert.equal(answer, null);
+  assert.equal(trace.modelCalls.length, 2);
+  assert.match(trace.error!, /valid submission/);
+});
+
+test("the call reader never receives card digits from tool records", async () => {
+  const model = scriptedModel([[functionCall("submitAnswer", ANSWER)]]);
+  await askCallHistory("what did we talk about?", options(model.create), {
+    SUPABASE_CHAT_ID: "chat-1",
+    toolOverrides: { getFullCallsTool: { transcript: "card 4111 1111 1111 1112" } },
+  });
+  assert.ok(!JSON.stringify(model.requests).includes("4111"));
 });
 
 test("card numbers in the answer are redacted before the responder or the trace sees them", async () => {

@@ -64,7 +64,7 @@ export function buildScorecard({
     const { passed, checks } =
       error !== null
         ? { passed: false, checks: [{ name: "drafted", ok: false, detail: error }] }
-        : scoreCase(evalCase, reply, { toolCalls: trace?.toolCalls ?? [], skills: skillsRun(trace) });
+        : scoreCase(evalCase, reply, { toolCalls: trace?.toolCalls ?? [], skills: skillsRun(trace), mode });
     return {
       id: evalCase.id,
       group: evalCase.group,
@@ -135,6 +135,10 @@ export function formatScorecard(card: Scorecard): string {
 }
 
 export function compareScorecards(before: Scorecard, after: Scorecard): string {
+  const ids = (card: Scorecard) => card.cases.map(({ id }) => id).sort();
+  if (JSON.stringify(ids(before)) !== JSON.stringify(ids(after))) {
+    throw new Error("Compare runs with the same case ids. Select matching case files for both runs.");
+  }
   const groups = [...new Set([...Object.keys(before.groups), ...Object.keys(after.groups)])].sort();
   const rate = (card: Scorecard, group: string) => (card.groups[group] ? percent(card.groups[group].passRate) : "-");
   const passedBefore = new Map(before.cases.map((score) => [score.id, score.passed]));

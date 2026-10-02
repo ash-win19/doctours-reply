@@ -1,6 +1,6 @@
 import { SetupError } from "./errors.ts";
 import { escalationReply } from "./escalation.ts";
-import { cardDigitsIn, screenMessage } from "./guards.ts";
+import { cardDigitsIn, redactCardData, screenMessage } from "./guards.ts";
 import type { Reply } from "./reply.ts";
 import { DraftingError, type CreateResponse, type Step, type Trace } from "./model-calls.ts";
 import type { PatientContext } from "./patient-context.ts";
@@ -66,8 +66,8 @@ export async function respond(
   options: PipelineOptions,
 ): Promise<{ reply: Reply; trace: Trace }> {
   const responderOptions = { create: options.create, model: options.responderModel };
-  const { context } = options;
-  if (mode === "baseline") return respondBaseline(text, responderOptions, { context });
+  if (mode === "baseline") return respondBaseline(text, responderOptions, { context: options.context });
+  const context = redactCardData(options.context);
 
   const screening = screenMessage(text);
   const trace: PipelineTrace = {

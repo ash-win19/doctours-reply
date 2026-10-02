@@ -262,6 +262,20 @@ test("an Escalation from the escalate tool skips the validator", async () => {
   assert.deepEqual(trace.validation.runs, []);
 });
 
+test("an escalate tool call cannot change the decision during repair, even in the initial batch", async () => {
+  const first = { ...VALID_REPLY, response: "Silver is $9." };
+  const submit = functionCall("submitReply", first);
+  const escalate = functionCall("escalate", { reason: "Cannot repair", cannotDo: null });
+  for (const turns of [[[submit], [escalate]], [[submit, escalate]]]) {
+    const { result } = run([], turns);
+    const { reply, trace } = await result;
+    assert.equal(reply.escalate, false);
+    assert.equal(reply.response, first.response);
+    assert.equal(trace.validation.shipped, "first");
+    assert.equal(trace.toolCalls.at(-1)?.isError, true);
+  }
+});
+
 const CALL_ANSWER = { answer: "You said your hair is 4C.", callIds: ["66666666-6666-4666-8666-666666666666"] };
 
 function runWithSubagent(chosen: string[], turns: FakeFunctionCall[][]) {

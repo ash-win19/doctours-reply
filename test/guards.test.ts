@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cardDigitsIn, detectHumanRequest, redactCardNumbers, screenMessage } from "../src/guards.ts";
+import { cardDigitsIn, detectHumanRequest, redactCardData, redactCardNumbers, screenMessage } from "../src/guards.ts";
 
 test("redacts a card number written as one digit run", () => {
   const { text, found } = redactCardNumbers("Use 4111111111111111 for the deposit");
@@ -31,10 +31,21 @@ test("leaves ordinary numbers alone", () => {
     "Call me at +1 555 555 0123",
     "I'm thinking March 12, 2027",
     "my phone number ending in 5678",
-    "I was quoted 1500 2000 3000 4000 grafts by different clinics",
     "booking 44444444-4444-4444-8444-444444444441",
   ]) {
     assert.deepEqual(redactCardNumbers(text), { text, found: false });
+  }
+});
+
+test("redacts every 13 to 19 digit card-like run, even with an invalid checksum", () => {
+  for (let length = 13; length <= 19; length++) {
+    const digits = "4".repeat(length);
+    assert.deepEqual(redactCardNumbers(`card ${digits}`), { text: "card [card number]", found: true });
+  }
+  assert.equal(redactCardNumbers("4111 1111 1111 1112").text, "[card number]");
+  assert.equal(redactCardNumbers("4111-1111-1111-1112").text, "[card number]");
+  for (const digits of ["4".repeat(12), "4".repeat(20)]) {
+    assert.deepEqual(redactCardNumbers(digits), { text: digits, found: false });
   }
 });
 
@@ -94,4 +105,15 @@ test("screening redacts card numbers and forces an Escalation for cards or a per
 test("card digits in a message are listed, including runs that fail the Luhn check", () => {
   assert.deepEqual(cardDigitsIn("use 4111 1111 1111 1112, or my card ending in 4242"), ["4111111111111112", "4242"]);
   assert.deepEqual(cardDigitsIn("What does Heva cost?"), []);
+});
+
+test("redaction preserves complete UUIDs in context and tool URLs beside real card text", () => {
+  const id = "aaaaaaaa-bbbb-4ccc-8111-111111111111";
+  const url = `https://www.doctours.com/assessment/${id}`;
+  const source = { SUPABASE_CHAT_ID: id, nested: [{ url, note: "card 4111 1111 1111 1112" }] };
+  assert.deepEqual(redactCardData(source), {
+    SUPABASE_CHAT_ID: id, nested: [{ url, note: "card [card number]" }],
+  });
+  assert.equal(redactCardNumbers(`${id} 4111 1111 1111 1112`).text, `${id} [card number]`);
+  assert.deepEqual(cardDigitsIn(`${id} 4111 1111 1111 1112`), ["4111111111111112"]);
 });

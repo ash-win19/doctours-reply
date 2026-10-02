@@ -213,18 +213,15 @@ test("baseline mode stays the untouched before, with no validator", async () => 
   assert.equal((trace as { validation?: unknown }).validation, undefined);
 });
 
-test("card digits that weren't redacted still never reach the Reply", async () => {
-  // Fails the Luhn check, so the guards let it through.
+test("a card-like run with an invalid checksum escalates before any model call", async () => {
   const message = "my card number is 4111 1111 1111 1112, can you check it?";
-  const model = scriptedModel([
-    [functionCall("submitTriage", triageDecision())],
-    [functionCall("submitReply", { ...VALID_REPLY, response: "I can't check 4111 1111 1111 1112 for you." })],
-  ]);
-  const { reply } = await respond(message, "default", options(model.create));
-  assert.equal(reply.response, "I can't check for you.");
+  const { reply, trace } = await respond(message, "default", options(noModel));
+  assert.equal(reply.escalate, true);
+  assert.equal((trace as PipelineTrace).path, "guard-escalation");
+  assert.doesNotMatch(JSON.stringify({ reply, trace }), /4111|1112/);
 });
 
-test("an Escalation submitted by the baseline fallback skips the validator and keeps escalate", async () => {
+test("an Escalation from the baseline fallback uses the same template and fields as triage", async () => {
   const escalation = { ...VALID_REPLY, escalate: true, escalationReason: "refund", response: "I'm getting a person for you. Silver is $9." };
   const model = scriptedModel([
     [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
@@ -232,9 +229,32 @@ test("an Escalation submitted by the baseline fallback skips the validator and k
   ]);
   const { reply, trace } = await respond("refund me", "default", options(model.create));
   assert.equal(reply.escalate, true);
-  assert.equal(reply.response, escalation.response);
+  assert.equal(reply.response, "I'm getting a person for you.");
+  assert.equal(reply.intent, "escalate to a person");
+  assert.deepEqual(reply.workingMemoryUpdates, { escalationFlags: "refund" });
   assert.equal(model.requests.length, 2);
   assert.deepEqual((trace as PipelineTrace).responder!.validation!.runs, []);
+});
+
+test("default mode redacts historical card text and tool overrides without changing the source context", async () => {
+  for (const skills of [["clinic-packages"], ["other"]]) {
+    const model = scriptedModel([
+      [functionCall("submitTriage", triageDecision({ skills }))],
+      [functionCall("getClinicPackagesTool", { clinicId: "test-clinic" })],
+      [functionCall("submitReply", VALID_REPLY)],
+    ]);
+    const oldText = "Earlier I sent 4111 1111 1111 1112 and card ending in 4242";
+    const context = {
+      ...PACKET_CONTEXT,
+      CHAT_LIST: oldText,
+      RECENT_MEDIA_CONVERSATION: [{ role: "user", sender: "Patient", text: oldText }],
+      toolOverrides: { getClinicPackagesTool: { note: oldText } },
+    };
+    const { trace } = await respond("What does the package include?", "default", { ...options(model.create), context });
+    assert.doesNotMatch(JSON.stringify({ trace, requests: model.requests }), /4111|1112|4242/);
+    assert.match(JSON.stringify(trace), /\[card number\]/);
+    assert.equal(context.CHAT_LIST, oldText);
+  }
 });
 
 test("a repair can't change escalate, so the first version ships when it tries", async () => {

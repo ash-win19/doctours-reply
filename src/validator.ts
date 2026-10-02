@@ -1,4 +1,5 @@
 import type { Reply } from "./reply.ts";
+import { redactCardData } from "./guards.ts";
 import type { SubmitOutcome } from "./tool-loop.ts";
 import { runTool, type ToolRun, type ToolContext } from "./tools.ts";
 
@@ -62,7 +63,8 @@ export function runToolForEvidence(
   context: ToolContext,
   evidence: TurnEvidence | null,
 ): ToolRun {
-  const run = runTool(name, input, context);
+  const raw = runTool(name, input, context);
+  const run = evidence ? redactCardData(raw) : raw;
   if (evidence && !run.isError) collectEvidence(evidence, run.output);
   return run;
 }

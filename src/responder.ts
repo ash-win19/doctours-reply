@@ -1,4 +1,5 @@
 import { asDraftingError, type ModelOptions } from "./model-calls.ts";
+import { escalationReply } from "./escalation.ts";
 import type { PatientContext } from "./patient-context.ts";
 import { buildBaselineSystemPrompt, buildBaselineUserMessage } from "./prompt.ts";
 import type { Reply } from "./reply.ts";
@@ -42,7 +43,14 @@ export async function respondBaseline(
   let onSubmit = (reply: Reply): SubmitOutcome => ({ reply });
   if (evidence) {
     trace.validation = emptyValidationTrace();
-    onSubmit = validatingSubmit(evidence, trace.validation);
+    const validate = validatingSubmit(evidence, trace.validation);
+    onSubmit = (submitted) => {
+      const outcome = validate(submitted);
+      if ("reply" in outcome && outcome.reply.escalate) {
+        return { reply: escalationReply(outcome.reply.escalationReason ?? "Responder escalated", null) };
+      }
+      return outcome;
+    };
   }
   try {
     const reply = await runToolLoop(

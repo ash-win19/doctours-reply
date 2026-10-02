@@ -67,7 +67,7 @@ Fixtures live in `evals/contexts/`:
 
 Escalation is settled before any Reply is drafted, and the responder can still escalate mid-turn (ADR 0001, ADR 0002):
 
-1. **Guards, in code.** Card numbers (13 to 19 digits with optional spaces or dashes that pass the Luhn check) and phrases like "card ending in 4242" are replaced with "[card number]" before triage, a trace or any model sees the text. Card details or an explicit request for a person ("talk to a human", "real person", "someone call me") escalate with no model call.
+1. **Guards, in code.** Card numbers (13 to 19 digits with optional spaces or dashes, regardless of checksum) and phrases like "card ending in 4242" are replaced with "[card number]" before triage, a trace or any model sees the text. Card details or an explicit request for a person ("talk to a human", "real person", "someone call me") escalate with no model call.
 2. **Triage.** One `TRIAGE_MODEL` call reads the redacted message, a state card built from the Patient context, the last 4 chat turns and the escalation policy in `prompts/triage/`, and submits `{ escalate, escalationReason, cannotDo, skills, intent }`.
 3. **Escalation.** Code renders the Reply from the ADR 0002 template: "I can't {cannotDo}. I'm getting a person for you.", or "I'm getting a person for you." with no `cannotDo`. A `cannotDo` holding digits is dropped. The Reply sets `escalationReason`, `intent` "escalate to a person" and `workingMemoryUpdates.escalationFlags`.
 4. **Skills.** Everything else is answered by a responder that sees only three things, in this order:
@@ -77,16 +77,16 @@ Escalation is settled before any Reply is drafted, and the responder can still e
 
    Its tools are the loaded skills' tools plus `loadSkill`, `escalate` and `submitReply`. `loadSkill` pulls in another skill's text and tools mid-turn. `escalate` returns the same template Reply as step 3. `updateWorkingMemory` is never exposed, so memory changes come back only in `workingMemoryUpdates`. Code sets `templateId` to null, and a submitted Reply never escalates.
 5. **Call-history subagent** (ADR 0003). The `call-history` skill is new behaviour that wraps one source rule, TOOL USAGE's "Use getFullCallsTool only when you need full call context and there has been a very recent call listed in context." It gives the responder one tool, `askCallHistory({ question })`, which runs a separate `TRIAGE_MODEL` call (`src/call-history.ts`, `prompts/call-history/`):
-   - The reader fetches `getFullCallsTool` itself, reads the summaries and transcripts, and answers in at most 3 sentences, or says the calls don't cover the question. The cap is in its prompt and the answer schema, and code never cuts the answer.
-   - Card numbers in the answer are redacted before the responder or the trace sees it, because call records aren't redacted the way Patient messages are.
+   - The reader fetches `getFullCallsTool` itself, reads the summaries and transcripts, and answers in at most 3 sentences, or says the calls don't cover the question. The cap is checked when the answer is parsed. An overlong answer gets one request to shorten it; a second invalid answer fails the reader. Code never cuts the answer.
+   - Card-like digit runs are redacted from call records before the reader sees them, and from its answer before the responder or trace sees it.
    - The responder gets only the answer, so on the skills path transcript text never enters its context. A message that falls back to the baseline responder still has `getFullCallsTool`, because the baseline stays the original prompt.
    - The trace adds `{ subagent: "callHistory", question, answer, callIds, usage, latencyMs, error }` to the responder's `subagents`. The reader's model calls also go into `modelCalls` under the step `callHistory`, so its tokens count in eval totals.
    - If the reader still fails after retries, its record keeps the usage, latency and error, and the message fails like any other drafting failure and escalates. A Reply written without the answer could only guess at what was said.
    - Subagent tools are listed by name in `src/tools.ts` and defined in one map in `src/subagent-tools.ts`, so adding another means one name and one map entry.
 6. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
-7. **Validator.** Every Reply that isn't an Escalation goes through `src/validator.ts` before output, including a Reply from the baseline fallback. Escalations from the guards, triage or the `escalate` tool skip it, and it never changes `escalate`. See [Validator](#validator).
+7. **Validator.** Every Reply that isn't an Escalation goes through `src/validator.ts` before output, including a Reply from the baseline fallback. Escalations from the guards, triage or the `escalate` tool skip it, and it never changes `escalate`. A default-mode fallback escalation uses the same fixed template and fields. Repair cannot escalate, including through the `escalate` tool. See [Validator](#validator).
 
-The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `skills`, `baseline` or `drafting-failed`), the skills triage chose and any loaded mid-turn, every tool call with its arguments and result, and every model call tagged with its step. Trace files never hold card digits in this mode. Baseline mode still sends the raw text to the model, so its `userMessage` does.
+The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `skills`, `baseline` or `drafting-failed`), the skills triage chose and any loaded mid-turn, every tool call with its arguments and result, and every model call tagged with its step. Trace files never hold card digits in this mode. Default mode also redacts text in the Patient context and tool results. Baseline mode still sends the raw text to the model, so its `userMessage` does.
 
 ### Validator
 
@@ -159,7 +159,7 @@ npm run eval        # runs every eval case through the real model
 
 - `--cases <name>` runs one case file, such as `--cases packet-check`. Repeat it for more.
 - Every run saves its scorecard to `evals/results/<runId>.json`, with the same run ID as its traces.
-- `npm run eval -- --compare <runA> <runB>` prints the two runs side by side, plus the cases that were fixed or broke. A run is named by its run ID or by a results file path.
+- `npm run eval -- --compare <runA> <runB>` prints the two runs side by side, plus the cases that were fixed or broke. Both runs must contain the same case ids. Run `--cases packet-check` separately for comparison with the historical five-case baseline. A run is named by its run ID or by a results file path.
 
 A case is one Patient message plus deterministic checks:
 
@@ -172,6 +172,8 @@ A case is one Patient message plus deterministic checks:
   "expect": { "escalate": false, "includes": ["free"], "lastLineUrl": "https://www.doctours.com/consultation" }
 }
 ```
+
+Baseline scoring skips skill-selection checks because baseline has no skill router. A call-history lookup must use `getFullCallsTool` in baseline and `askCallHistory` in default mode. All other tool calls, arguments and Reply checks apply in both modes.
 
 A case can also name a Patient context file with `"context": "evals/contexts/lead.json"`, and its message then runs as that Patient. Without one it runs as the packet's Patient.
 

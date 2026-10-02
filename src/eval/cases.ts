@@ -117,6 +117,7 @@ export interface Observed {
   toolCalls: ToolCallTrace[];
   // The skills that ran: the ones triage chose plus any loaded mid-turn.
   skills: string[];
+  mode?: string;
 }
 
 const NOTHING_OBSERVED: Observed = { toolCalls: [], skills: [] };
@@ -131,9 +132,15 @@ const CHECKS: { [Name in keyof Expect]-?: Check<NonNullable<Expect[Name]>> } = {
   noUrl: (reply, expected) => (expected ? checkNoUrl(reply) : null),
   maxSentences: checkMaxSentences,
   maxAttachments: checkMaxAttachments,
-  calls: (_reply, expected, observed) => checkCalls(observed.toolCalls, expected),
+  calls: (_reply, expected, observed) => checkCalls(
+    observed.toolCalls,
+    expected.map((call) => observed.mode === "baseline" && call.tool === "askCallHistory"
+      ? { ...call, tool: "getFullCallsTool" }
+      : call),
+  ),
   fields: (reply, expected) => checkFields(reply, expected),
-  skills: (_reply, expected, observed) => checkSkills(observed.skills, expected),
+  // Baseline has no skill router. Its ordinary tool calls and Reply checks still apply.
+  skills: (_reply, expected, observed) => observed.mode === "baseline" ? null : checkSkills(observed.skills, expected),
   leadsWith: checkLeadsWith,
 };
 

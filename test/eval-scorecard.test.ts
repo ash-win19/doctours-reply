@@ -155,6 +155,37 @@ test("compare shows both runs side by side and the cases that flipped", () => {
   assert.match(text, /Broke\s+consultation/);
 });
 
+test("baseline checks call-record access through its own tool and skips skill routing", () => {
+  const callCase: EvalCase = {
+    id: "call", group: "call-history", rule: "read the call records", text: "What was said?",
+    expect: { includes: ["4C"], calls: [{ tool: "askCallHistory" }], skills: { includes: ["call-history"] } },
+  };
+  const answered = result(callCase, { ...VALID_REPLY, response: "You said your hair is 4C." }, 1, []);
+  answered.trace!.toolCalls = [{ name: "getFullCallsTool", input: {}, output: {}, isError: false }];
+  const baseline = buildScorecard({ cases: [callCase], run: { runId: "before", results: [answered] }, mode: "baseline", model: "fake" });
+  assert.equal(baseline.cases[0].passed, true);
+  assert.equal(baseline.cases[0].checks.some((check) => check.name === "skills"), false);
+  const after = buildScorecard({ cases: [callCase], run: { runId: "after", results: [answered] }, mode: "default", model: "fake" });
+  assert.equal(after.cases[0].passed, false);
+  answered.trace!.toolCalls = [];
+  assert.equal(buildScorecard({ cases: [callCase], run: { runId: "missing", results: [answered] }, mode: "baseline", model: "fake" }).cases[0].passed, false);
+});
+
+test("baseline still requires ordinary tool calls and their arguments", () => {
+  const writeCase: EvalCase = {
+    id: "name", group: "intake-photos", rule: "save name", text: "I am Sam",
+    expect: { calls: [{ tool: "updateUserTool", argsInclude: ["Sam"] }] },
+  };
+  const answered = result(writeCase, VALID_REPLY, 1, []);
+  answered.trace!.toolCalls = [{ name: "updateUserTool", input: { firstName: "Pat" }, output: {}, isError: false }];
+  const baseline = buildScorecard({ cases: [writeCase], run: { runId: "before", results: [answered] }, mode: "baseline", model: "fake" });
+  assert.equal(baseline.cases[0].passed, false);
+});
+
+test("comparison rejects runs over different cases rather than comparing unrelated totals", () => {
+  assert.throws(() => compareScorecards(card, { ...card, cases: card.cases.slice(0, 1) }), /same case ids/);
+});
+
 test("a skills check reads the skills triage chose and any loaded mid-turn from the trace", () => {
   const skillCase: EvalCase = {
     ...cases[0],
