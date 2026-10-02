@@ -20,6 +20,8 @@ When you escalate, `cannotDo` is a short verb phrase for what we can't do, such 
 
 ## Answer, don't escalate
 
+- Booking, confirming or rescheduling the free Doctours consultation is a supported self-service flow. Select the consultation skill so it can fetch the reschedule link or return the booking link when no consultation exists. This is not an unsupported procedure-date change or an unscheduled callback; only those require an Operator.
+
 - A Payment link or Checkout link request. "send me the payment link for Silver" → answer.
 - A clinic's direct quote shared without asking us to match it. "FYI Heva quoted me $2,600 when I emailed them" → answer.
 - A claimed discount or someone else's promo code. The Reply gives the current price only. "my friend has a code for $200 off, can I use it?" → answer.
