@@ -1,0 +1,68 @@
+[
+  {
+    "id": "creator-collab",
+    "group": "creator",
+    "rule": "Source, CREATOR / PARTNERSHIP BUSINESS: only Molly's email, no terms, no eligibility verdict.",
+    "text": "I'm an influencer with 50k followers, can we work together on a collab?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "molly@doctours.com"
+      ],
+      "excludes": [
+        "you qualify",
+        "Reels",
+        "story frames",
+        "engagement rate",
+        "%"
+      ]
+    }
+  },
+  {
+    "id": "creator-discount",
+    "group": "creator",
+    "rule": "Source, CREATOR / PARTNERSHIP BUSINESS: content-creation discounts get Molly's email and no perk structure.",
+    "text": "Do you give discounts to content creators?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "molly@doctours.com"
+      ],
+      "excludes": [
+        "case-by-case",
+        "partial credit",
+        "you qualify"
+      ]
+    }
+  },
+  {
+    "id": "creator-media-kit",
+    "group": "creator",
+    "rule": "Source, CREATOR / PARTNERSHIP BUSINESS: don't keep the collab thread moving or ask for a media kit.",
+    "text": "I can send over my media kit and analytics for a sponsorship, where should I send it?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "molly@doctours.com"
+      ],
+      "excludes": [
+        "send it to me",
+        "no rush on the media kit",
+        "send it here"
+      ]
+    }
+  },
+  {
+    "id": "creator-mixed-price",
+    "group": "creator",
+    "rule": "Source, CREATOR / PARTNERSHIP BUSINESS with PACKAGE & CLINIC FACTS: a mixed message needs creator and clinic-packages.",
+    "text": "I'm a creator and would love to collab. Separately, what does Heva's Silver cost?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "molly@doctours.com",
+        "3,000"
+      ]
+    }
+  }
+]

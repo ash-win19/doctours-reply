@@ -1,0 +1,104 @@
+[
+  {
+    "id": "travel-flight-help",
+    "group": "travel",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 1: flight help leads with the link sent after the Deposit, never book your own.",
+    "text": "Do you help me find flights?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "after the deposit",
+          "after your deposit",
+          "once the deposit",
+          "once your deposit",
+          "after you pay the deposit",
+          "once you've paid the deposit"
+        ]
+      ],
+      "excludes": [
+        "book your own",
+        "/trip/"
+      ]
+    }
+  },
+  {
+    "id": "travel-airport",
+    "group": "travel",
+    "rule": "Source, BUSINESS POLICY GROUNDING airport examples: no drive times, and no SAW vs IST question.",
+    "text": "Which airport should I fly into for Heva, and how long is the drive to the clinic?",
+    "expect": {
+      "escalate": false,
+      "excludes": [
+        "minutes",
+        "hour drive",
+        "SAW or IST"
+      ]
+    }
+  },
+  {
+    "id": "travel-passport",
+    "group": "travel",
+    "rule": "Source, TRAVEL READINESS: open with the normalizing beat, then the practical path.",
+    "text": "I don't have a passport yet. Can I still do Turkey?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "normal",
+          "many of our patients",
+          "a lot of our patients"
+        ],
+        [
+          "perfect reason",
+          "great reason"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "travel-timing",
+    "group": "travel",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 1 travel timing: give the general range, never a fixed itinerary.",
+    "text": "How long should I plan to stay in Istanbul?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "day or two",
+          "1-2 days",
+          "1 to 2 days",
+          "one or two days"
+        ]
+      ],
+      "excludes": [
+        "fly home that evening"
+      ]
+    }
+  },
+  {
+    "id": "travel-mixed-package",
+    "group": "travel",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 1 with PACKAGE & CLINIC FACTS: a mixed message needs travel and clinic-packages.",
+    "text": "Do you help with flights, and how many hotel nights come with Heva's Silver?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "3 nights",
+          "three nights",
+          "3 hotel nights",
+          "three hotel nights"
+        ],
+        [
+          "after the deposit",
+          "after your deposit",
+          "once the deposit",
+          "once your deposit",
+          "after you pay the deposit",
+          "once you've paid the deposit"
+        ]
+      ]
+    }
+  }
+]

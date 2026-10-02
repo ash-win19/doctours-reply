@@ -1,0 +1,128 @@
+[
+  {
+    "id": "assess-revision",
+    "group": "assessment-aftercare",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 3: a revision request gets the one allowed commitment and no turnaround window.",
+    "text": "Can you lower my hairline a bit on the plan?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "redraw",
+          "revise",
+          "revised",
+          "updated plan",
+          "update the plan",
+          "updated assessment"
+        ]
+      ],
+      "excludes": [
+        "24 hours",
+        "48 hours",
+        "24-48",
+        "a few hours",
+        "couple of hours",
+        "later today",
+        "by tomorrow",
+        "within a day",
+        "a few days",
+        "business days"
+      ]
+    }
+  },
+  {
+    "id": "assess-turnaround",
+    "group": "assessment-aftercare",
+    "rule": "Source, GUIDELINES no assessment turnaround promises: no window in any phrasing.",
+    "text": "If I ask for changes, how long until the new assessment comes back?",
+    "expect": {
+      "escalate": false,
+      "excludes": [
+        "24 hours",
+        "48 hours",
+        "24-48",
+        "a few hours",
+        "couple of hours",
+        "later today",
+        "by tomorrow",
+        "within a day",
+        "a few days",
+        "business days",
+        "usually takes",
+        "typically takes"
+      ]
+    }
+  },
+  {
+    "id": "assess-what-to-wear",
+    "group": "assessment-aftercare",
+    "rule": "Source, GUIDELINES no head-covering advice: front-opening tops, and no hat, cap, beanie, scarf or other head covering.",
+    "text": "What should I pack to wear after the procedure?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "button",
+          "zip",
+          "front-opening",
+          "front opening"
+        ]
+      ],
+      "excludes": [
+        "a hat",
+        "beanie",
+        "scarf",
+        "a cap",
+        "baseball cap",
+        "bandana",
+        "headband",
+        "head wrap",
+        "durag"
+      ]
+    }
+  },
+  {
+    "id": "assess-finasteride",
+    "group": "assessment-aftercare",
+    "rule": "Source, PACKAGE & CLINIC FACTS finasteride: hims.com and keeps.com, no other pharmacy.",
+    "text": "Where can I get finasteride?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "hims.com",
+        "keeps.com"
+      ]
+    }
+  },
+  {
+    "id": "assess-mixed-gold",
+    "group": "assessment-aftercare",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 3 with PACKAGE & CLINIC FACTS: a mixed message needs assessment-aftercare and clinic-packages.",
+    "text": "Can you redraw my hairline a little lower? Also does Heva's Gold include more hotel nights?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "redraw",
+          "revise",
+          "revised",
+          "updated plan",
+          "update the plan"
+        ],
+        "Gold"
+      ],
+      "excludes": [
+        "24 hours",
+        "48 hours",
+        "24-48",
+        "a few hours",
+        "couple of hours",
+        "later today",
+        "by tomorrow",
+        "within a day",
+        "a few days",
+        "business days"
+      ]
+    }
+  }
+]
