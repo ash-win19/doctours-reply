@@ -2,6 +2,7 @@ node_modules/
 dist/
 traces/
 .env
+/replies.json
 .DS_Store
 evals/results/*
 # The baseline the README cites.
