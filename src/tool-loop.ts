@@ -115,6 +115,11 @@ export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOption
       } else {
         const args = parseArguments(functionCall.arguments);
         const outcome: ToolOutcome = args.ok ? await loop.callTool(name, args.value) : { isError: true, output: args.error };
+        if ("reply" in outcome && bestSoFar && outcome.reply.escalate !== bestSoFar.escalate) {
+          trace.toolCalls.push({ name, input: args.ok ? args.value : functionCall.arguments, isError: true,
+            output: "Repair cannot change escalation. Keeping the first Reply." });
+          return bestSoFar;
+        }
         const traced = "reply" in outcome ? { isError: false, output: outcome.reply } : outcome;
         trace.toolCalls.push({ name, input: args.ok ? args.value : functionCall.arguments, ...traced });
         if ("reply" in outcome) return outcome.reply;

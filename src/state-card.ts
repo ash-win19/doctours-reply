@@ -1,25 +1,24 @@
+import type { PatientContext } from "./patient-context.ts";
+
 // The facts about a Patient that decide what a Reply may do, in a few lines for triage and the responder.
 
-export interface ChatMessage {
-  role: string;
-  sender: string;
-  text: string;
-}
+export type ChatMessage = PatientContext["RECENT_MEDIA_CONVERSATION"][number];
 
-export interface StateCardContext {
-  PATIENT_NAME: string | null;
-  TIER: string;
-  PIPELINE_STATUS: string;
-  KLARNA_PAYPAL_FINANCING_ELIGIBLE: boolean | null;
-  PATIENT_COUNTRY_CODE: string | null;
-  COLLECTION_STATUS: string;
-  PROMO_OFFER: unknown;
-  SAVED_CLINIC_COUNT: number;
-  SELECTED_CLINIC: unknown;
-  CONSULTATION_TIME: string | null;
-  RECENT_MEDIA_CONVERSATION: readonly ChatMessage[];
-  CURRENT_DATE_TIME: string;
-}
+export type StateCardContext = Pick<
+  PatientContext,
+  | "PATIENT_NAME"
+  | "TIER"
+  | "PIPELINE_STATUS"
+  | "KLARNA_PAYPAL_FINANCING_ELIGIBLE"
+  | "PATIENT_COUNTRY_CODE"
+  | "COLLECTION_STATUS"
+  | "PROMO_OFFER"
+  | "SAVED_CLINIC_COUNT"
+  | "SELECTED_CLINIC"
+  | "CONSULTATION_TIME"
+  | "RECENT_MEDIA_CONVERSATION"
+  | "CURRENT_DATE_TIME"
+>;
 
 const URL_PATTERN = /https?:\/\/\S+/g;
 

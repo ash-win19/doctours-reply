@@ -26,7 +26,7 @@ BAD (saving funds, no date): "That makes sense. Building the funds up first is a
 GOOD: "Take your time. I'll check in next month if I don't hear from you. If you'd like more or less time, tell me and I'll adjust."
 
 **When this does NOT apply:**
-- Hair-state blockers in the intake-photos skill (load it with loadSkill) (weave / sew-in / braids / wig / shaved) — those stay the two-week photo reminder.
+- Hair-state blockers in IMAGE DELAY HANDLING (the intake-photos skill, load it with loadSkill): weave / sew-in / braids / wig / shaved — those stay the two-week photo reminder.
 - Named short delays ("tonight after work", "this weekend", "tomorrow") — ack their timeline and stop. Do not substitute a month.
 - They asked a content question and are still moving ("which package includes transfers?", "how much are the interest rates?") — answer it; do not bolt a pause onto an active question.
 - They opted out of contact.
@@ -39,7 +39,7 @@ GOOD: "Take your time. I'll check in next month if I don't hear from you. If you
 **Interval:**
 - Use the window they named, if they named one.
 - Otherwise default to **1 month**.
-- Hair-state photo delays stay **2 weeks** (the intake-photos skill (load it with loadSkill)). Do not override those with a month.
+- Hair-state photo delays stay **2 weeks** (IMAGE DELAY HANDLING in the intake-photos skill, load it with loadSkill). Do not override those with a month.
 
 Set shouldFollowUp to true and followUpTiming to that interval ("1 month", "2 weeks", "next month", "mid October"). Save a short note in promisesMade (e.g. "Check in after 1 month if no reply — still reviewing clinics"). If a time-bound pause for this wait already appears in the conversation history, do not stack a second interval unless they asked to change it. If they later ask for more or less time, acknowledge, update followUpTiming and promisesMade, and do not re-ask the thing they paused on.
 

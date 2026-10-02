@@ -1,6 +1,7 @@
 import type { Reply } from "./reply.ts";
+import { redactCardData } from "./guards.ts";
 import type { SubmitOutcome } from "./tool-loop.ts";
-import { runTool, type ToolRun } from "./tools.ts";
+import { runTool, type ToolRun, type ToolContext } from "./tools.ts";
 
 // What this turn's tool results said, collected as they arrive. A Reply may only repeat URLs and amounts found here.
 export interface TurnEvidence {
@@ -56,8 +57,14 @@ export function collectEvidence(evidence: TurnEvidence, output: unknown): void {
 }
 
 // Runs a tool, adding a successful result to the evidence when the Reply will be validated.
-export function runToolForEvidence(name: string, input: unknown, evidence: TurnEvidence | null): ToolRun {
-  const run = runTool(name, input);
+export function runToolForEvidence(
+  name: string,
+  input: unknown,
+  context: ToolContext,
+  evidence: TurnEvidence | null,
+): ToolRun {
+  const raw = runTool(name, input, context);
+  const run = evidence ? redactCardData(raw) : raw;
   if (evidence && !run.isError) collectEvidence(evidence, run.output);
   return run;
 }

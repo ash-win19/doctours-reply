@@ -100,5 +100,27 @@
         ]
       ]
     }
+  },
+  {
+    "id": "travel-preferred-airport",
+    "group": "travel",
+    "rule": "Source, TOOL USAGE and BUSINESS POLICY GROUNDING: when getClinicPackagesTool returns a preferredAirport, the answer leads with it, with no drive times.",
+    "text": "Which airport should I fly into for Heva?",
+    "context": "evals/contexts/heva-preferred-airport.json",
+    "expect": {
+      "escalate": false,
+      "leadsWith": [
+        "Sabiha",
+        "SAW"
+      ],
+      "excludes": [
+        "minutes"
+      ],
+      "calls": [
+        {
+          "tool": "getClinicPackagesTool"
+        }
+      ]
+    }
   }
 ]

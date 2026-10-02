@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildStateCard, recentTurns } from "../src/state-card.ts";
-import * as context from "../src/context.ts";
+import { PACKET_CONTEXT as context } from "../src/patient-context.ts";
 
 test("the packet Patient's state card", () => {
   assert.equal(
@@ -52,4 +52,8 @@ test("recent turns are the last four messages, oldest first", () => {
     "Jordan Hale: Got it",
     "Alex: Did any clinic catch your eye, or do you have questions about the plan?",
   ]);
+});
+
+test("the state card shows the context's Collection Status as it is", () => {
+  assert.match(buildStateCard({ ...context, COLLECTION_STATUS: "area crown; name MISSING" }), /^Intake items: area crown; name MISSING$/m);
 });

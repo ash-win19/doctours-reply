@@ -1,6 +1,7 @@
 import type { FunctionTool } from "openai/resources/responses/responses";
 import { z } from "zod";
 import * as packet from "./packet-tools.ts";
+import type { PatientContext } from "./patient-context.ts";
 
 const UserIdInput = z.object({ userId: z.string().optional() });
 const ClinicInput = z.object({
@@ -131,12 +132,32 @@ export function toolsNamed(names: string[]): FunctionTool[] {
 
 export type ToolRun = { isError: false; output: unknown } | { isError: true; output: string };
 
-export function runTool(name: string, input: unknown): ToolRun {
+// The part of a Patient context that tools read.
+export type ToolContext = Pick<PatientContext, "toolOverrides">;
+
+const INPUT_PLACEHOLDER = /^\{\{input\.(\w+)\}\}$/;
+
+// An override's "{{input.field}}" strings take that field from the call's arguments, or null.
+function fillFromInput(value: unknown, input: Record<string, unknown>): unknown {
+  if (typeof value === "string") {
+    const field = value.match(INPUT_PLACEHOLDER)?.[1];
+    return field === undefined ? value : (input[field] ?? null);
+  }
+  if (Array.isArray(value)) return value.map((item) => fillFromInput(item, input));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, fillFromInput(item, input)]));
+  }
+  return value;
+}
+
+export function runTool(name: string, input: unknown, context: ToolContext): ToolRun {
   const toolSpec = SPECS[name];
   if (!toolSpec) return { isError: true, output: `Unknown tool: ${name}` };
   const parsed = toolSpec.input.safeParse(input);
   if (!parsed.success) {
     return { isError: true, output: `Invalid input for ${name}: ${z.prettifyError(parsed.error)}` };
   }
+  const override = context.toolOverrides?.[name];
+  if (override !== undefined) return { isError: false, output: fillFromInput(override, parsed.data as Record<string, unknown>) };
   return { isError: false, output: toolSpec.run(parsed.data) ?? null };
 }

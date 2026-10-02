@@ -1,9 +1,9 @@
-import * as context from "./context.ts";
 import { SetupError } from "./errors.ts";
 import { escalationReply } from "./escalation.ts";
-import { cardDigitsIn, screenMessage } from "./guards.ts";
+import { cardDigitsIn, redactCardData, screenMessage } from "./guards.ts";
 import type { Reply } from "./reply.ts";
 import { DraftingError, type CreateResponse, type Step, type Trace } from "./model-calls.ts";
+import type { PatientContext } from "./patient-context.ts";
 import { respondBaseline, type BaselineTrace } from "./responder.ts";
 import { respondWithSkills, type SkillResponderTrace } from "./skill-responder.ts";
 import { loadSkillRegistry, statusModule, type SkillRegistry } from "./skills.ts";
@@ -26,6 +26,8 @@ export interface PipelineOptions {
   create: CreateResponse;
   responderModel: string;
   triageModel: string;
+  // The Patient the message is from.
+  context: PatientContext;
 }
 
 // Which way a message went: escalated by a guard in code, escalated by triage, answered with skills,
@@ -53,11 +55,9 @@ function detachCalls<T extends Trace>({ modelCalls, toolCalls, ...rest }: T, int
 }
 
 // Why the skill-based responder can't take this message yet, or null when it can.
-function fallbackReason(registry: SkillRegistry, chosen: string[], status: string | null, pipelineStatus: string): string | null {
+function fallbackReason(registry: SkillRegistry, chosen: string[]): string | null {
   const missing = chosen.filter((id) => !registry.has(id));
-  if (missing.length > 0) return `No skill named ${missing.join(", ")}`;
-  if (status === null) return `No module for Pipeline Status ${pipelineStatus}`;
-  return null;
+  return missing.length > 0 ? `No skill named ${missing.join(", ")}` : null;
 }
 
 export async function respond(
@@ -66,7 +66,8 @@ export async function respond(
   options: PipelineOptions,
 ): Promise<{ reply: Reply; trace: Trace }> {
   const responderOptions = { create: options.create, model: options.responderModel };
-  if (mode === "baseline") return respondBaseline(text, responderOptions);
+  if (mode === "baseline") return respondBaseline(text, responderOptions, { context: options.context });
+  const context = redactCardData(options.context);
 
   const screening = screenMessage(text);
   const trace: PipelineTrace = {
@@ -105,12 +106,15 @@ export async function respond(
     // The validator keeps these out of the Reply, as a second safety after redaction.
     const inputCardDigits = cardDigitsIn(text);
     const status = statusModule(context.PIPELINE_STATUS);
-    const reason = fallbackReason(registry, decision.skills, status, context.PIPELINE_STATUS);
+    const reason = fallbackReason(registry, decision.skills);
     if (reason) {
       // A message that needs a skill that doesn't exist yet still gets the original prompt's full rules.
       trace.path = "baseline";
       trace.fallback = { to: "baseline", reason };
-      const { reply, trace: responderTrace } = await respondBaseline(screening.redactedText, responderOptions, { inputCardDigits });
+      const { reply, trace: responderTrace } = await respondBaseline(screening.redactedText, responderOptions, {
+        context,
+        validation: { inputCardDigits },
+      });
       trace.responder = detachCalls(responderTrace, trace);
       return { reply, trace };
     }
@@ -132,4 +136,12 @@ export async function respond(
     trace.path = "drafting-failed";
     throw new DraftingError(error instanceof Error ? error.message : String(error), trace);
   }
+}
+
+// The skills that ran for a message: the ones triage chose plus any the responder loaded mid-turn.
+export function skillsRun(trace: Trace | null): string[] {
+  const responder = (trace as Partial<PipelineTrace> | null)?.responder;
+  if (!responder || !("skills" in responder)) return [];
+  const { chosen, loaded } = responder.skills as SkillResponderTrace["skills"];
+  return [...chosen, ...loaded];
 }

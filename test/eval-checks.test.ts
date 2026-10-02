@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   checkCalls,
+  checkLeadsWith,
+  checkSkills,
   checkFields,
   checkEscalate,
   checkReply,
@@ -126,6 +128,21 @@ test("a calls check fails on a missing tool, missing argument text, or a call th
   assert.equal(checkCalls(calls, [{ tool: "updateUserClinicPreferencesTool" }]).ok, false);
 });
 
+test("a skills check passes when every included skill ran and no excluded one did", () => {
+  assert.equal(checkSkills(["clinic-packages", "intake-photos"], { includes: ["intake-photos"] }).ok, true);
+  assert.equal(checkSkills(["clinic-packages"], { excludes: ["intake-photos"] }).ok, true);
+  assert.equal(checkSkills([], { excludes: ["intake-photos"] }).ok, true);
+});
+
+test("a skills check names a missing or unwanted skill", () => {
+  const missing = checkSkills(["clinic-packages"], { includes: ["intake-photos"] });
+  assert.equal(missing.ok, false);
+  assert.match(missing.detail, /intake-photos didn't run/);
+  const unwanted = checkSkills(["clinic-packages", "intake-photos"], { excludes: ["intake-photos"] });
+  assert.equal(unwanted.ok, false);
+  assert.match(unwanted.detail, /intake-photos ran/);
+});
+
 test("a fields check compares Reply fields by dotted path", () => {
   const reply = {
     ...VALID_REPLY,
@@ -149,4 +166,12 @@ test("a fields check fails on a wrong value, and * needs a non-empty value", () 
   assert.match(result.detail, /shouldFollowUp is false, expected true/);
   assert.match(result.detail, /followUpTiming is null, expected "1 month"/);
   assert.match(result.detail, /workingMemoryUpdates\.promisesMade is undefined, expected a value/);
+});
+
+test("a leadsWith check looks only at the first sentence, ignoring URLs", () => {
+  const reply = { ...VALID_REPLY, response: "Fly into Sabiha Gökçen (SAW). Istanbul Airport also works.\nhttps://www.doctours.com/clinic/heva" };
+  assert.equal(checkLeadsWith(reply, ["Sabiha", "SAW"]).ok, true);
+  const later = checkLeadsWith(reply, ["Istanbul Airport"]);
+  assert.equal(later.ok, false);
+  assert.match(later.detail, /first sentence is "Fly into Sabiha Gökçen \(SAW\)"/);
 });

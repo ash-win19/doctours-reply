@@ -1,12 +1,27 @@
 import { z } from "zod";
 import { DraftingError, asDraftingError, forcedSubmit, tokenUsage, type ModelOptions, type Trace } from "./model-calls.ts";
-import { redactCardNumbers } from "./guards.ts";
+import { redactCardData, redactCardNumbers } from "./guards.ts";
 import { buildCallHistorySystemPrompt, buildCallHistoryUserMessage } from "./prompt.ts";
+import type { PatientContext } from "./patient-context.ts";
 import { runTool, toolDefinition } from "./tools.ts";
+
+// What the reader needs from the Patient context: whose calls to fetch, and any fixed tool results.
+export type CallHistoryContext = Pick<PatientContext, "SUPABASE_CHAT_ID" | "toolOverrides">;
+
+// Count sentence endings without splitting decimal prices, links, or common titles such as Dr. Hakan.
+function answerSentences(answer: string): number {
+  return answer
+    .replace(/https?:\/\/\S+/g, "link")
+    .replace(/\b(?:Dr|Mr|Mrs|Ms|Prof)\./g, "title")
+    .split(/[.!?]+(?:\s+|$)/)
+    .filter((part) => part.trim().length > 0).length;
+}
 
 const CallHistoryAnswerSchema = z.object({
   answer: z
     .string()
+    .min(1)
+    .refine((answer) => answerSentences(answer) <= 3, "Use at most 3 sentences. Combine the relevant facts into a shorter answer.")
     .describe("At most 3 short sentences answering the question, or that the calls don't cover it."),
   callIds: z.array(z.string()).describe("The ids of the calls the answer came from."),
 });
@@ -36,7 +51,7 @@ export type CallHistoryTrace = CallHistoryRecord & Trace;
 export async function askCallHistory(
   question: string,
   options: ModelOptions,
-  { chatId }: { chatId: string },
+  context: CallHistoryContext,
 ): Promise<{ answer: string | null; trace: CallHistoryTrace }> {
   const started = performance.now();
   const trace: CallHistoryTrace = {
@@ -50,7 +65,7 @@ export async function askCallHistory(
     modelCalls: [],
   };
   try {
-    const callRecords = runTool("getFullCallsTool", { chatId }).output;
+    const callRecords = redactCardData(runTool("getFullCallsTool", { chatId: context.SUPABASE_CHAT_ID }, context).output);
     const submitted = await forcedSubmit(
       {
         trace,

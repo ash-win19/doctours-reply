@@ -6,11 +6,11 @@ import {
   buildResponderSystemPrompt,
   buildResponderUserMessage,
   formatSkill,
-  type CoreContext,
 } from "./prompt.ts";
+import type { PatientContext } from "./patient-context.ts";
 import type { Reply } from "./reply.ts";
 import type { Skill, SkillRegistry } from "./skills.ts";
-import { SUBAGENT_TOOLS, isSubagentTool, type SubagentContext, type SubagentRecord } from "./subagent-tools.ts";
+import { SUBAGENT_TOOLS, isSubagentTool, type SubagentRecord } from "./subagent-tools.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
 import { toolDefinition, toolsNamed, type SubagentToolName } from "./tools.ts";
 import {
@@ -45,9 +45,9 @@ export interface SkillResponderInput {
   registry: SkillRegistry;
   // Skill ids triage chose. All must be in the registry.
   chosen: string[];
-  patient: CoreContext & SubagentContext;
+  patient: PatientContext;
   // The module for the Patient's Pipeline Status, which code picks.
-  status: string | null;
+  status: string;
   // Card digit runs in the Patient's raw message, which the validator keeps out of the Reply.
   inputCardDigits?: string[];
   // The small model subagents run on. Defaults to the responder's model.
@@ -122,7 +122,7 @@ export async function respondWithSkills(
     }
     // A subagent's answer is a model's summary, not tool data, so it never becomes evidence for the validator.
     if (isSubagentTool(name)) return runSubagent(name, input);
-    return runToolForEvidence(name, input, evidence);
+    return runToolForEvidence(name, input, patient, evidence);
   }
 
   const submit = validatingSubmit(evidence, trace.validation);

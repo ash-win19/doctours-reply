@@ -8,16 +8,17 @@ import {
   buildResponderUserMessage,
 } from "../src/prompt.ts";
 import { buildStateCard } from "../src/state-card.ts";
+import { PACKET_CONTEXT, loadContext } from "../src/patient-context.ts";
 import { loadSkillRegistry } from "../src/skills.ts";
 import * as context from "../src/context.ts";
 
 test("system prompt fills every placeholder", () => {
-  const prompt = buildBaselineSystemPrompt();
+  const prompt = buildBaselineSystemPrompt(PACKET_CONTEXT);
   assert.doesNotMatch(prompt, /\{\{[A-Z_]+\}\}/);
 });
 
 test("string constants go in verbatim", () => {
-  const prompt = buildBaselineSystemPrompt();
+  const prompt = buildBaselineSystemPrompt(PACKET_CONTEXT);
   assert.ok(prompt.includes(context.PATIENT_SUMMARY));
   assert.ok(prompt.includes(context.CHAT_LIST));
   assert.ok(prompt.includes(`<working_memory_data>\n${context.WORKING_MEMORY}\n</working_memory_data>`));
@@ -25,20 +26,20 @@ test("string constants go in verbatim", () => {
 });
 
 test("non-string constants are JSON-stringified", () => {
-  const prompt = buildBaselineSystemPrompt();
+  const prompt = buildBaselineSystemPrompt(PACKET_CONTEXT);
   assert.ok(prompt.includes("Assessment Clinic Recommendations: 2 clinic(s)"));
   assert.ok(prompt.includes("Patient Images: 5 uploaded"));
 });
 
 test("user message fills the human message and conversation summary", () => {
-  const message = buildBaselineUserMessage("Is the consultation free?");
+  const message = buildBaselineUserMessage("Is the consultation free?", PACKET_CONTEXT);
   assert.ok(message.startsWith('Incoming thread message:\n"Is the consultation free?"\n'));
   assert.ok(message.endsWith(`Recent conversation summary:\n${context.RECENT_CONVERSATION_SUMMARY}`));
   assert.doesNotMatch(message, /\{\{/);
 });
 
 test("placeholder-like text in the human message is left alone", () => {
-  const message = buildBaselineUserMessage("what is {{RECENT_CONVERSATION_SUMMARY}}?");
+  const message = buildBaselineUserMessage("what is {{RECENT_CONVERSATION_SUMMARY}}?", PACKET_CONTEXT);
   assert.ok(message.includes('"what is {{RECENT_CONVERSATION_SUMMARY}}?"'));
 });
 
@@ -83,4 +84,22 @@ test("the responder's system prompt is the core, then the Pipeline Status module
 test("the responder's user message carries the incoming message", () => {
   const message = buildResponderUserMessage("What does Heva cost?", context);
   assert.equal(message, 'Incoming thread message:\n"What does Heva cost?"\nIncoming image count: 0\nTriggering sender: Jordan Hale');
+});
+
+const leadPatient = loadContext("evals/contexts/lead.json");
+
+test("the baseline prompts fill from a swapped context", () => {
+  const system = buildBaselineSystemPrompt(leadPatient);
+  assert.ok(system.includes(leadPatient.PATIENT_SUMMARY));
+  assert.ok(system.includes("Collection Status: area MISSING; name MISSING; photos MISSING."));
+  assert.doesNotMatch(system, /Collection Status: null/);
+  const user = buildBaselineUserMessage("hi", leadPatient);
+  assert.match(user, /Triggering sender: \+15555550199\n/);
+  assert.doesNotMatch(user, /Jordan/);
+});
+
+test("the core prompt fills from a swapped context, and an empty chat says so", () => {
+  const core = buildCorePrompt(leadPatient, []);
+  assert.match(core, /Pipeline Status: LEAD/);
+  assert.match(core, /## Recent conversation\nNo messages yet\./);
 });

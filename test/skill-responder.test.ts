@@ -5,7 +5,7 @@ import { respondWithSkills, type SkillResponderTrace } from "../src/skill-respon
 import { DraftingError } from "../src/model-calls.ts";
 import { loadSkillRegistry, statusModule } from "../src/skills.ts";
 import { escalationReply } from "../src/escalation.ts";
-import * as context from "../src/context.ts";
+import { PACKET_CONTEXT as context } from "../src/patient-context.ts";
 import {
   VALID_REPLY,
   firstUserText,
@@ -260,6 +260,20 @@ test("an Escalation from the escalate tool skips the validator", async () => {
   const { reply, trace } = await result;
   assert.equal(reply.response, "I can't refund a payment. I'm getting a person for you.");
   assert.deepEqual(trace.validation.runs, []);
+});
+
+test("an escalate tool call cannot change the decision during repair, even in the initial batch", async () => {
+  const first = { ...VALID_REPLY, response: "Silver is $9." };
+  const submit = functionCall("submitReply", first);
+  const escalate = functionCall("escalate", { reason: "Cannot repair", cannotDo: null });
+  for (const turns of [[[submit], [escalate]], [[submit, escalate]]]) {
+    const { result } = run([], turns);
+    const { reply, trace } = await result;
+    assert.equal(reply.escalate, false);
+    assert.equal(reply.response, first.response);
+    assert.equal(trace.validation.shipped, "first");
+    assert.equal(trace.toolCalls.at(-1)?.isError, true);
+  }
 });
 
 const CALL_ANSWER = { answer: "You said your hair is 4C.", callIds: ["66666666-6666-4666-8666-666666666666"] };

@@ -1,0 +1,1 @@
+The intake collection rules (COLLECTION PERSISTENCE, INFORMATION COLLECTION, IMAGE GUIDANCE) are in the intake-photos skill. If it is not loaded below and the state card's Intake items line shows an item still outstanding, call loadSkill with "intake-photos".

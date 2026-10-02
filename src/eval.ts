@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
-import { loadCases } from "./eval/cases.ts";
+import { caseMessages, loadCases } from "./eval/cases.ts";
 import { loadScorecard, saveScorecard } from "./eval/results.ts";
 import { buildScorecard, compareScorecards, formatScorecard } from "./eval/scorecard.ts";
 import { defaultRunnerDeps, log } from "./deps.ts";
@@ -39,11 +39,7 @@ async function main(): Promise<void> {
   }
   const cases = loadCases(args.caseFiles);
   const deps = defaultRunnerDeps();
-  const run = await runMessages(
-    cases.map(({ id, text }) => ({ id, text })),
-    args.mode,
-    deps,
-  );
+  const run = await runMessages(caseMessages(cases), args.mode, deps);
   const model = args.mode === "baseline" ? deps.responderModel : `${deps.responderModel}, triage ${deps.triageModel}`;
   const card = buildScorecard({ cases, run, mode: args.mode, model });
   log(`\n${formatScorecard(card)}`);

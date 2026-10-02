@@ -1,6 +1,6 @@
 import type { FunctionTool } from "openai/resources/responses/responses";
 import { z } from "zod";
-import { askCallHistory, type CallHistoryRecord, type CallHistoryTrace } from "./call-history.ts";
+import { askCallHistory, type CallHistoryContext, type CallHistoryRecord, type CallHistoryTrace } from "./call-history.ts";
 import type { ModelOptions } from "./model-calls.ts";
 import { toolDefinition, type SubagentToolName } from "./tools.ts";
 
@@ -12,9 +12,8 @@ export interface SubagentRun {
 
 export type SubagentRecord = CallHistoryRecord;
 
-export interface SubagentContext {
-  SUPABASE_CHAT_ID: string;
-}
+// The part of the Patient context a subagent tool reads.
+export type SubagentContext = CallHistoryContext;
 
 interface SubagentTool<Input> {
   definition: FunctionTool;
@@ -32,7 +31,7 @@ export const SUBAGENT_TOOLS: Record<SubagentToolName, SubagentTool<unknown>> = {
     "askCallHistory",
     "Ask a question about the patient's past calls with Doctours, such as the Consultation. A separate reader checks the full call summaries and transcripts and returns a short answer.",
     z.object({ question: z.string() }),
-    ({ question }, options, context) => askCallHistory(question, options, { chatId: context.SUPABASE_CHAT_ID }),
+    ({ question }, options, context) => askCallHistory(question, options, context),
   ),
 };
 

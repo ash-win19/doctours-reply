@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { parseCases, scoreCase, loadCaseFiles, type EvalCase } from "../src/eval/cases.ts";
+import { caseMessages, parseCases, scoreCase, loadCaseFiles, type EvalCase } from "../src/eval/cases.ts";
+import { PACKET_CONTEXT } from "../src/patient-context.ts";
 import { VALID_REPLY } from "./fakes.ts";
 
 const baseCase: EvalCase = {
@@ -57,9 +58,16 @@ test("rejects unknown checks so a typo can't pass silently", () => {
   assert.throws(() => parseCases(JSON.stringify([typo]), "cases.json"), /escalte/);
 });
 
-test("rejects patient context until the runner can swap it in", () => {
-  const withContext = { ...baseCase, context: { pipelineStatus: "LEAD" } };
-  assert.throws(() => parseCases(JSON.stringify([withContext]), "cases.json"), /context/);
+test("a case can name a Patient context file, and its message runs with that context", () => {
+  const [withContext] = parseCases(JSON.stringify([{ ...baseCase, context: "evals/contexts/lead.json" }]), "cases.json");
+  const [packetMessage, leadPatientMessage] = caseMessages([baseCase, { ...withContext, id: "new-patient" }]);
+  assert.equal(packetMessage.context, PACKET_CONTEXT);
+  assert.equal(leadPatientMessage.context.PIPELINE_STATUS, "LEAD");
+  assert.deepEqual({ id: leadPatientMessage.id, text: leadPatientMessage.text }, { id: "new-patient", text: baseCase.text });
+});
+
+test("a case's context must be a file path", () => {
+  assert.throws(() => parseCases(JSON.stringify([{ ...baseCase, context: { PIPELINE_STATUS: "LEAD" } }]), "cases.json"), /context/);
 });
 
 test("rejects duplicate case ids across files", () => {
@@ -124,8 +132,18 @@ test("nothing outside the eval harness reads the packet-check cases", () => {
 test("a calls check is scored against the message's tool calls", () => {
   const evalCase = { ...baseCase, expect: { calls: [{ tool: "updateUserClinicPreferencesTool", argsInclude: ["heva-id"] }] } };
   const call = { name: "updateUserClinicPreferencesTool", input: { clinicSelection: { selectedClinicId: "heva-id" } }, output: {}, isError: false };
-  assert.equal(scoreCase(evalCase, VALID_REPLY, [call]).passed, true);
-  assert.equal(scoreCase(evalCase, VALID_REPLY, []).passed, false);
+  assert.equal(scoreCase(evalCase, VALID_REPLY, { toolCalls: [call], skills: [] }).passed, true);
+  assert.equal(scoreCase(evalCase, VALID_REPLY, { toolCalls: [], skills: [] }).passed, false);
+});
+
+test("a skills check is scored against the skills that ran", () => {
+  const evalCase = { ...baseCase, expect: { skills: { includes: ["intake-photos"], excludes: ["payments"] } } };
+  assert.equal(scoreCase(evalCase, VALID_REPLY, { toolCalls: [], skills: ["intake-photos"] }).passed, true);
+  assert.equal(scoreCase(evalCase, VALID_REPLY, { toolCalls: [], skills: ["intake-photos", "payments"] }).passed, false);
+  assert.throws(
+    () => parseCases(JSON.stringify([{ ...baseCase, expect: { skills: { inclues: ["x"] } } }]), "cases.json"),
+    /inclues/,
+  );
 });
 
 test("a fields check is scored against the Reply", () => {

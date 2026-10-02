@@ -4,6 +4,7 @@ import { respond, type PipelineTrace } from "../src/pipeline.ts";
 import { DraftingError, tokenUsage, type CreateResponse } from "../src/model-calls.ts";
 import { SetupError } from "../src/errors.ts";
 import { loadSkillRegistry } from "../src/skills.ts";
+import { PACKET_CONTEXT, loadContext } from "../src/patient-context.ts";
 import { VALID_REPLY, firstUserText, functionCall, scriptedModel, triageDecision } from "./fakes.ts";
 
 const noModel: CreateResponse = async () => {
@@ -11,7 +12,7 @@ const noModel: CreateResponse = async () => {
 };
 
 function options(create: CreateResponse) {
-  return { create, responderModel: "responder-model", triageModel: "triage-model" };
+  return { create, responderModel: "responder-model", triageModel: "triage-model", context: PACKET_CONTEXT };
 }
 
 test("card details escalate without a model call, and the digits never reach the trace", async () => {
@@ -157,6 +158,41 @@ test("baseline mode skips guards and triage", async () => {
   assert.match(model.requests[0].instructions as string, /^# IDENTITY/);
 });
 
+const leadPatient = loadContext("evals/contexts/lead.json");
+
+test("a swapped context reaches triage, the core prompt, the Pipeline Status module and the tools", async () => {
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["intake-photos"] }))],
+    [functionCall("getPatientImagesTool", {})],
+    [functionCall("submitReply", VALID_REPLY)],
+  ]);
+  const { trace } = await respond("done", "default", { ...options(model.create), context: leadPatient });
+  assert.match(firstUserText(model.requests[0]), /Pipeline Status: LEAD/);
+  assert.match(firstUserText(model.requests[0]), /Intake items: area MISSING; name MISSING; photos MISSING/);
+  const system = model.requests[1].instructions as string;
+  assert.match(system, /# PIPELINE STATUS: LEAD/);
+  assert.match(system, /## Recent conversation\nNo messages yet\./);
+  assert.match(firstUserText(model.requests[1]), /Triggering sender: \+15555550199/);
+  assert.equal((trace.toolCalls![0].output as { hasImages: boolean }).hasImages, false);
+});
+
+test("an unknown Pipeline Status is answered reactively with skills, not by the baseline", async () => {
+  const model = scriptedModel([[functionCall("submitTriage", triageDecision())], [functionCall("submitReply", VALID_REPLY)]]);
+  const { trace } = await respond("thanks", "default", {
+    ...options(model.create),
+    context: { ...PACKET_CONTEXT, PIPELINE_STATUS: "SOMETHING_NEW" },
+  });
+  assert.equal((trace as PipelineTrace).path, "skills");
+  assert.match(model.requests[1].instructions as string, /answer reactively/);
+});
+
+test("baseline mode fills the original prompt and tools from a swapped context", async () => {
+  const model = scriptedModel([[functionCall("getPatientImagesTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
+  const { trace } = await respond("done", "baseline", { ...options(model.create), context: leadPatient });
+  assert.ok((model.requests[0].instructions as string).includes(leadPatient.PATIENT_SUMMARY));
+  assert.equal((trace.toolCalls![0].output as { hasImages: boolean }).hasImages, false);
+});
+
 const FABRICATED = { ...VALID_REPLY, response: "Pay using the link below.\nhttps://www.doctours.com/payment/made-up" };
 
 test("in the default mode, a Reply from the baseline fallback is validated too", async () => {
@@ -177,18 +213,15 @@ test("baseline mode stays the untouched before, with no validator", async () => 
   assert.equal((trace as { validation?: unknown }).validation, undefined);
 });
 
-test("card digits that weren't redacted still never reach the Reply", async () => {
-  // Fails the Luhn check, so the guards let it through.
+test("a card-like run with an invalid checksum escalates before any model call", async () => {
   const message = "my card number is 4111 1111 1111 1112, can you check it?";
-  const model = scriptedModel([
-    [functionCall("submitTriage", triageDecision())],
-    [functionCall("submitReply", { ...VALID_REPLY, response: "I can't check 4111 1111 1111 1112 for you." })],
-  ]);
-  const { reply } = await respond(message, "default", options(model.create));
-  assert.equal(reply.response, "I can't check for you.");
+  const { reply, trace } = await respond(message, "default", options(noModel));
+  assert.equal(reply.escalate, true);
+  assert.equal((trace as PipelineTrace).path, "guard-escalation");
+  assert.doesNotMatch(JSON.stringify({ reply, trace }), /4111|1112/);
 });
 
-test("an Escalation submitted by the baseline fallback skips the validator and keeps escalate", async () => {
+test("an Escalation from the baseline fallback uses the same template and fields as triage", async () => {
   const escalation = { ...VALID_REPLY, escalate: true, escalationReason: "refund", response: "I'm getting a person for you. Silver is $9." };
   const model = scriptedModel([
     [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
@@ -196,9 +229,32 @@ test("an Escalation submitted by the baseline fallback skips the validator and k
   ]);
   const { reply, trace } = await respond("refund me", "default", options(model.create));
   assert.equal(reply.escalate, true);
-  assert.equal(reply.response, escalation.response);
+  assert.equal(reply.response, "I'm getting a person for you.");
+  assert.equal(reply.intent, "escalate to a person");
+  assert.deepEqual(reply.workingMemoryUpdates, { escalationFlags: "refund" });
   assert.equal(model.requests.length, 2);
   assert.deepEqual((trace as PipelineTrace).responder!.validation!.runs, []);
+});
+
+test("default mode redacts historical card text and tool overrides without changing the source context", async () => {
+  for (const skills of [["clinic-packages"], ["other"]]) {
+    const model = scriptedModel([
+      [functionCall("submitTriage", triageDecision({ skills }))],
+      [functionCall("getClinicPackagesTool", { clinicId: "test-clinic" })],
+      [functionCall("submitReply", VALID_REPLY)],
+    ]);
+    const oldText = "Earlier I sent 4111 1111 1111 1112 and card ending in 4242";
+    const context = {
+      ...PACKET_CONTEXT,
+      CHAT_LIST: oldText,
+      RECENT_MEDIA_CONVERSATION: [{ role: "user", sender: "Patient", text: oldText }],
+      toolOverrides: { getClinicPackagesTool: { note: oldText } },
+    };
+    const { trace } = await respond("What does the package include?", "default", { ...options(model.create), context });
+    assert.doesNotMatch(JSON.stringify({ trace, requests: model.requests }), /4111|1112|4242/);
+    assert.match(JSON.stringify(trace), /\[card number\]/);
+    assert.equal(context.CHAT_LIST, oldText);
+  }
 });
 
 test("a repair can't change escalate, so the first version ships when it tries", async () => {

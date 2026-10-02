@@ -74,11 +74,24 @@ export function checkNoUrl(reply: Reply): CheckResult {
   return { ok: urls.length === 0, detail: urls.length ? `has URL ${urls.join(", ")}` : "has no URL" };
 }
 
-export function countSentences(text: string): number {
+// Sentences split on ".", "?" and "!" after removing URLs.
+function sentences(text: string): string[] {
   return text
     .replace(URL_PATTERN, "")
     .split(/[.?!]/)
-    .filter((part) => part.trim().length > 0).length;
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+export function countSentences(text: string): number {
+  return sentences(text).length;
+}
+
+// The Reply's first sentence mentions one of the alternatives, so the answer leads with it.
+export function checkLeadsWith(reply: Reply, alternatives: string[]): CheckResult {
+  const [first = ""] = sentences(reply.response);
+  const ok = alternatives.some((alternative) => mentions(first, alternative));
+  return { ok, detail: `${ok ? "leads with" : "doesn't lead with"} one of ${quoted(alternatives)}; first sentence is "${first}"` };
 }
 
 export function checkMaxSentences(reply: Reply, max: number): CheckResult {
@@ -136,4 +149,19 @@ export function checkFields(reply: Reply, expected: Record<string, FieldExpectat
     .filter(({ value, actual }) => !fieldMatches(actual, value))
     .map(({ path, value, actual }) => `${path} is ${JSON.stringify(actual) ?? "undefined"}, expected ${describe(value)}`);
   return { ok: wrong.length === 0, detail: wrong.length ? wrong.join("; ") : "every field matches" };
+}
+
+export interface ExpectedSkills {
+  includes?: string[];
+  excludes?: string[];
+}
+
+// Every included skill ran, and no excluded one did.
+export function checkSkills(skills: string[], { includes = [], excludes = [] }: ExpectedSkills): CheckResult {
+  const problems = [
+    ...includes.filter((id) => !skills.includes(id)).map((id) => `${id} didn't run`),
+    ...excludes.filter((id) => skills.includes(id)).map((id) => `${id} ran`),
+  ];
+  const ran = skills.length ? skills.join(", ") : "none";
+  return { ok: problems.length === 0, detail: problems.length ? `${problems.join(", ")} (skills that ran: ${ran})` : `skills that ran: ${ran}` };
 }

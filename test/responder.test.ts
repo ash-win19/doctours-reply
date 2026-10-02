@@ -4,19 +4,20 @@ import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai
 import { respondBaseline } from "../src/responder.ts";
 import { MAX_TOOL_ROUNDS, type ResponderTrace } from "../src/tool-loop.ts";
 import { DraftingError, tokenUsage } from "../src/model-calls.ts";
+import { PACKET_CONTEXT } from "../src/patient-context.ts";
 import { VALID_REPLY, scriptedModel, functionCall, functionOutputs, inputItems, toolNames } from "./fakes.ts";
 
 const options = { model: "fake-model" };
 
 test("returns the Reply the model submits", async () => {
   const model = scriptedModel([[functionCall("submitReply", VALID_REPLY)]]);
-  const { reply } = await respondBaseline("Is the consultation free?", { ...options, create: model.create });
+  const { reply } = await respondBaseline("Is the consultation free?", { ...options, create: model.create }, { context: PACKET_CONTEXT });
   assert.deepEqual(reply, VALID_REPLY);
 });
 
 test("sends the filled system prompt, the user message and every tool", async () => {
   const model = scriptedModel([[functionCall("submitReply", VALID_REPLY)]]);
-  await respondBaseline("Is the consultation free?", { ...options, create: model.create });
+  await respondBaseline("Is the consultation free?", { ...options, create: model.create }, { context: PACKET_CONTEXT });
   const [request] = model.requests;
   assert.equal(request.model, "fake-model");
   assert.match(request.instructions as string, /^# IDENTITY/);
@@ -36,7 +37,7 @@ test("runs tools and feeds results back until the Reply is submitted", async () 
   const { reply, trace } = await respondBaseline("What does Dr. Hakan Clinic cost?", {
     ...options,
     create: model.create,
-  });
+  }, { context: PACKET_CONTEXT });
   assert.deepEqual(reply, VALID_REPLY);
   const call = inputItems(model.requests[1]).find((item) => "type" in item && item.type === "function_call") as {
     call_id: string;
@@ -51,14 +52,14 @@ test("runs tools and feeds results back until the Reply is submitted", async () 
 
 test("sends the model's output back whole, reasoning items included", async () => {
   const model = scriptedModel([[functionCall("getAllClinicsTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
-  await respondBaseline("hi", { ...options, create: model.create });
+  await respondBaseline("hi", { ...options, create: model.create }, { context: PACKET_CONTEXT });
   const types = inputItems(model.requests[1]).map((item) => ("type" in item ? item.type : "message"));
   assert.deepEqual(types, ["message", "reasoning", "function_call", "function_call_output"]);
 });
 
 test("always sets templateId to null", async () => {
   const model = scriptedModel([[functionCall("submitReply", { ...VALID_REPLY, templateId: "tpl_1" })]]);
-  const { reply } = await respondBaseline("hi", { ...options, create: model.create });
+  const { reply } = await respondBaseline("hi", { ...options, create: model.create }, { context: PACKET_CONTEXT });
   assert.equal(reply.templateId, null);
 });
 
@@ -67,7 +68,7 @@ test("an invalid Reply goes back to the model as an error", async () => {
     [functionCall("submitReply", { ...VALID_REPLY, escalate: "no" })],
     [functionCall("submitReply", VALID_REPLY)],
   ]);
-  const { reply } = await respondBaseline("hi", { ...options, create: model.create });
+  const { reply } = await respondBaseline("hi", { ...options, create: model.create }, { context: PACKET_CONTEXT });
   assert.deepEqual(reply, VALID_REPLY);
   const [result] = functionOutputs(model.requests[1]);
   assert.match(result.output as string, /does not match the schema/);
@@ -78,7 +79,7 @@ test("tool arguments that are not JSON go back to the model as an error", async 
     [{ name: "getClinicPackagesTool", arguments: "{clinicName: Heva" }],
     [functionCall("submitReply", VALID_REPLY)],
   ]);
-  const { trace } = await respondBaseline("hi", { ...options, create: model.create });
+  const { trace } = await respondBaseline("hi", { ...options, create: model.create }, { context: PACKET_CONTEXT });
   const [result] = functionOutputs(model.requests[1]);
   assert.match(result.output as string, /not valid JSON/);
   assert.equal(trace.toolCalls[0].isError, true);
@@ -87,7 +88,7 @@ test("tool arguments that are not JSON go back to the model as an error", async 
 test(`forces submitReply after ${MAX_TOOL_ROUNDS} tool rounds`, async () => {
   const lookups = Array.from({ length: MAX_TOOL_ROUNDS }, () => [functionCall("getAllClinicsTool", {})]);
   const model = scriptedModel([...lookups, [functionCall("submitReply", VALID_REPLY)]]);
-  await respondBaseline("hi", { ...options, create: model.create });
+  await respondBaseline("hi", { ...options, create: model.create }, { context: PACKET_CONTEXT });
   assert.deepEqual(model.requests.at(-1)!.tool_choice, { type: "function", name: "submitReply" });
   assert.equal(model.requests.at(-2)!.tool_choice, "required");
 });
@@ -95,7 +96,7 @@ test(`forces submitReply after ${MAX_TOOL_ROUNDS} tool rounds`, async () => {
 test("throws with the partial trace when the model never submits a valid Reply", async () => {
   const lookups = Array.from({ length: 20 }, () => [functionCall("getAllClinicsTool", {})]);
   const model = scriptedModel(lookups);
-  await assert.rejects(respondBaseline("hi", { ...options, create: model.create }), (error: unknown) => {
+  await assert.rejects(respondBaseline("hi", { ...options, create: model.create }, { context: PACKET_CONTEXT }), (error: unknown) => {
     assert.ok(error instanceof DraftingError);
     assert.match(error.message, /submit/i);
     assert.equal(error.trace.modelCalls.length, 10);
@@ -106,7 +107,7 @@ test("throws with the partial trace when the model never submits a valid Reply",
 
 test("traces usage and latency for every model call", async () => {
   const model = scriptedModel([[functionCall("getAllClinicsTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
-  const { trace } = await respondBaseline("hi", { ...options, create: model.create });
+  const { trace } = await respondBaseline("hi", { ...options, create: model.create }, { context: PACKET_CONTEXT });
   assert.equal(trace.modelCalls.length, 2);
   for (const call of trace.modelCalls) {
     assert.equal(call.step, "responder");
@@ -121,7 +122,7 @@ test("traces usage and latency for every model call", async () => {
 
 test("totals tokens across a trace; output already includes reasoning", async () => {
   const model = scriptedModel([[functionCall("getAllClinicsTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
-  const { trace } = await respondBaseline("hi", { ...options, create: model.create });
+  const { trace } = await respondBaseline("hi", { ...options, create: model.create }, { context: PACKET_CONTEXT });
   assert.deepEqual(tokenUsage(trace), { inputTokens: 200, outputTokens: 100 });
   assert.deepEqual(tokenUsage(null), { inputTokens: 0, outputTokens: 0 });
 });
