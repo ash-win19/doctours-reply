@@ -101,13 +101,13 @@ Fixed in code right away:
 - URLs move to the last lines, one per line, in order of first mention. A URL inside a sentence becomes "the link below".
 - Markdown markers are stripped. URLs keep their underscores.
 - Field consistency: `escalationReason` is null when `escalate` is false, `followUpTiming` is null when `shouldFollowUp` is false, and an empty `attachmentUrls` is null. The tool loop sets `templateId` to null on every submitted Reply.
+- Attachments are filtered to URLs returned by tools this turn, then capped at 3 in their original order. If none remain, `attachmentUrls` is null. Removal asks for a repair so the responder can fetch evidence or revise its wording. The first draft and every repair are sanitized before either can ship, including when repair fails.
 
 Checked, then repaired once:
 - Every amount next to "$" or "USD" is a money value in this turn's tool results, or on the policy list (the $25 cancellation fee).
 - No banned phrases: an assessment turnaround window (a window tied to the assessment being ready, done, back, sent or delivered), "I'll get back to you", saying "a coordinator will…" or "someone from our team", and advice to bring, pack, wear, buy or pick out a head covering. The list is `BANNED_PHRASES`, with the source rule next to each entry.
-- `attachmentUrls` has at most 3 entries, all returned by a tool.
 
-If anything still fails, the responder gets one repair turn. A `user`-role message lists the failures. The model may make up to 2 lookups, and its last call must submit the Reply again. Further submitReply calls in the response that asked for the repair don't count as the repair. The version with fewer failures ships, unless the repair changed `escalate`, in which case the first version ships. If the repair doesn't come back as a valid Reply, the first version ships. Anything still failing ships anyway. The trace's `responder.validation` holds each run's fixes and check results, whether repair ran, and which version shipped.
+If anything still fails or a removal requires revised wording, the responder gets one repair turn. A `user`-role message lists the failures. The model may make up to 2 lookups, and its last call must submit the Reply again. Further submitReply calls in the response that asked for the repair don't count as the repair. The version with fewer failures ships, unless the repair changed `escalate`, in which case the first version ships. If the repair doesn't come back as a valid Reply, the sanitized first version ships. Remaining price or phrase failures can still ship; attachment grounding and count are enforced in code. The trace's `responder.validation` holds each run's fixes and check results, whether repair ran, and which version shipped.
 
 ### Skills
 

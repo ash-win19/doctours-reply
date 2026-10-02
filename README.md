@@ -143,7 +143,7 @@ The following rows follow the [source brief's eight concerns](docs/brief.md) in 
 
 Triage adds a model round trip. Scoped tools save context but changing the tool list can lose cache reuse. The core includes Patient state and history, so later cache endpoints depend on that data staying stable. The separate reader adds latency only for call questions. Unknown topics retain a traced baseline fallback; the supported eval suite must have zero such fallbacks before acceptance.
 
-The validator deterministically fixes formatting, field consistency and ungrounded URLs, then permits one bounded repair. It ships the version with fewer remaining failures, as specified in AW-99. Persistent price, phrase or attachment failures remain visible in the trace; they do not automatically escalate. This is a deliberate limitation, not a guarantee that every delivered Reply passes every check.
+The validator deterministically fixes formatting, field consistency and ungrounded URLs. It filters attachments to URLs returned by tools this turn and keeps at most three, including when repair fails. It then permits one bounded repair and ships the version with fewer remaining failures. Persistent price or phrase failures remain visible in the trace; they do not automatically escalate. This is a deliberate limitation, not a guarantee that every delivered Reply passes every check.
 
 No skill text has been trimmed because each trim requires a live comparison. AW-101's caching and measurement code is implemented; measured savings and the trim pass remain pending. The call-history reader was retained. The model provider is OpenAI, including the small-model roles that earlier planning called Haiku. Reviewer invitations were excluded at Ashwin's request.
 
