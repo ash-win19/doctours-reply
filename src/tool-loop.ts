@@ -16,6 +16,7 @@ import {
 } from "./model-calls.ts";
 import { ReplySchema, type Reply } from "./reply.ts";
 import { toolDefinition, type ToolRun } from "./tools.ts";
+import { cachedDeveloperMessage, type PromptCachePlan } from "./prompt-cache.ts";
 
 export const MAX_TOOL_ROUNDS = 8;
 // Two forced submitReply calls after the tool rounds, in case the first one fails to parse.
@@ -29,6 +30,7 @@ export interface ResponderTrace extends Trace {
   userMessage: string;
   toolCalls: ToolCallTrace[];
   finalOutput: unknown;
+  promptCache?: PromptCachePlan;
 }
 
 // What one tool call did: an output to send back to the model, or a finished Reply that ends the turn.
@@ -56,7 +58,10 @@ const submitReplyTool = toolDefinition(
 // Runs tools until the model submits a Reply that matches the schema, or a tool finishes the turn.
 export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOptions): Promise<Reply> {
   const { trace } = loop;
-  const input: ResponseInputItem[] = [{ role: "user", content: trace.userMessage }];
+  const input: ResponseInputItem[] = [
+    ...(trace.promptCache ? [cachedDeveloperMessage(trace.promptCache)] : []),
+    { role: "user", content: trace.userMessage },
+  ];
   // Calls from this one on are forced to submitReply, and the loop stops before callLimit.
   let forceSubmitFrom = MAX_TOOL_ROUNDS;
   let callLimit = MAX_MODEL_CALLS;
@@ -69,7 +74,9 @@ export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOption
       create,
       {
         model,
-        instructions: trace.system,
+        ...(trace.promptCache
+          ? { prompt_cache_key: trace.promptCache.key, prompt_cache_options: { mode: "implicit" as const } }
+          : { instructions: trace.system }),
         input,
         tools: [...loop.tools(), submitReplyTool],
         tool_choice: toolChoice,

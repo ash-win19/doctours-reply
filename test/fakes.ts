@@ -23,8 +23,17 @@ export function triageDecision(overrides: Partial<TriageDecision> = {}): TriageD
 
 // The text of the first user message in a request.
 export function firstUserText(request: ResponseCreateParamsNonStreaming): string {
-  const [user] = request.input as ResponseInputItem[];
+  const user = (request.input as ResponseInputItem[]).find((item) => "role" in item && item.role === "user");
   return (user as { content: string }).content;
+}
+
+export function systemText(request: ResponseCreateParamsNonStreaming): string {
+  if (request.instructions) return request.instructions;
+  return (request.input as ResponseInputItem[]).flatMap((item) =>
+    "role" in item && item.role === "developer" && "content" in item
+      ? typeof item.content === "string" ? [item.content] : item.content.flatMap((part) => "text" in part ? [part.text] : [])
+      : [],
+  ).join("");
 }
 
 // Every input item a request sent: messages, reasoning, function calls and their outputs.

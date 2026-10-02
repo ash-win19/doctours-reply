@@ -9,6 +9,7 @@ import {
 } from "./prompt.ts";
 import type { PatientContext } from "./patient-context.ts";
 import type { Reply } from "./reply.ts";
+import { responderCachePlan } from "./prompt-cache.ts";
 import type { Skill, SkillRegistry } from "./skills.ts";
 import { SUBAGENT_TOOLS, isSubagentTool, type SubagentRecord } from "./subagent-tools.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
@@ -23,7 +24,7 @@ import {
 
 export interface SkillResponderTrace extends ResponderTrace {
   // Skills triage chose, and skills the responder loaded mid-turn with loadSkill.
-  skills: { chosen: string[]; loaded: string[] };
+  skills: { chosen: string[]; loaded: string[]; resolved?: string[] };
   // One record per subagent call. Their model calls are in modelCalls too, under their own step.
   subagents: SubagentRecord[];
   validation: ValidationTrace;
@@ -52,24 +53,27 @@ export interface SkillResponderInput {
   inputCardDigits?: string[];
   // The small model subagents run on. Defaults to the responder's model.
   subagentModel?: string;
+  promptCache?: boolean;
 }
 
 // Writes the Reply from the core, the Pipeline Status module and the chosen skills, with only those skills' tools.
 export async function respondWithSkills(
   message: string,
-  { registry, chosen, patient, status, inputCardDigits = [], subagentModel }: SkillResponderInput,
+  { registry, chosen, patient, status, inputCardDigits = [], subagentModel, promptCache = true }: SkillResponderInput,
   options: ModelOptions,
 ): Promise<{ reply: Reply; trace: SkillResponderTrace }> {
   const loaded: Skill[] = registry.resolve(chosen);
   const skillIds = registry.index().map(({ id }) => id);
+  const core = buildCorePrompt(patient, registry.index());
   const trace: SkillResponderTrace = {
     system: buildResponderSystemPrompt({
-      core: buildCorePrompt(patient, registry.index()),
+      core,
       status,
       skills: loaded,
     }),
     userMessage: buildResponderUserMessage(message, patient),
-    skills: { chosen, loaded: [] },
+    skills: { chosen, loaded: [], resolved: loaded.map(({ id }) => id) },
+    ...(promptCache ? { promptCache: responderCachePlan(core, status, loaded.map(formatSkill), patient.SUPABASE_CHAT_ID) } : {}),
     subagents: [],
     modelCalls: [],
     toolCalls: [],
