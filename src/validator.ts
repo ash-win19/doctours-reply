@@ -74,6 +74,8 @@ export function runToolForEvidence(
 export const STATIC_URLS = [
   { url: "https://www.doctours.com/consultation", use: "book the free consultation" },
   { url: "https://www.doctours.com/image-upload", use: "intake photos" },
+  { url: "https://hims.com", use: "policy-approved hair-loss provider" },
+  { url: "https://keeps.com", use: "policy-approved hair-loss provider" },
 ];
 export const CLINIC_PAGE_TEMPLATE = "https://www.doctours.com/clinic/{slug}";
 const CLINIC_PAGE = /^https:\/\/www\.doctours\.com\/clinic\/([a-z0-9-]+)\/?$/;

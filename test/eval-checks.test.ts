@@ -199,3 +199,15 @@ test("attachment evidence ignores failed tools and model summaries", () => {
   assert.equal(checkAttachmentEvidence(reply, [{ ...call, name: "askCallHistory" }]).ok, false);
   assert.equal(checkAttachmentEvidence(reply, []).ok, false);
 });
+
+
+test("typographic apostrophes do not turn a correct negative answer into an eval failure", () => {
+  assert.equal(checkIncludes(withResponse("I don’t have a budget recorded."), ["don't have"]).ok, true);
+  assert.equal(checkIncludes(withResponse("I do have a budget recorded."), ["don't have"]).ok, false);
+});
+
+
+test("equivalent range punctuation matches without accepting different ranges", () => {
+  assert.equal(checkIncludes(withResponse("Arrive 1–2 days before."), ["1-2 days"]).ok, true);
+  assert.equal(checkIncludes(withResponse("Arrive 2–3 days before."), ["1-2 days"]).ok, false);
+});

@@ -25,6 +25,7 @@ export interface RunnerDeps {
   responderModel: string;
   triageModel: string;
   promptCache?: boolean;
+  concurrency?: number;
   traceRoot: string;
   log: (line: string) => void;
 }
@@ -56,6 +57,10 @@ export interface RunOutput {
 }
 
 export async function runMessages(messages: RunMessage[], mode: Mode, deps: RunnerDeps): Promise<RunOutput> {
+  const concurrency = deps.concurrency ?? MAX_CONCURRENCY;
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > MAX_CONCURRENCY) {
+    throw new SetupError(`REPLY_CONCURRENCY must be an integer from 1 to ${MAX_CONCURRENCY}`);
+  }
   // An ISO timestamp with ":" swapped for "-" so it works as a directory name everywhere.
   const runId = new Date().toISOString().replaceAll(":", "-");
   const traceDir = join(deps.traceRoot, runId);
@@ -101,7 +106,7 @@ export async function runMessages(messages: RunMessage[], mode: Mode, deps: Runn
       await runOne(next++);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENCY, messages.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(concurrency, messages.length) }, worker));
 
   deps.log(`Wrote traces to ${traceDir}`);
   return { runId, results };

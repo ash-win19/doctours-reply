@@ -23,7 +23,7 @@ function quoted(values: string[]): string {
 
 // Lowercases, drops "$" and digit-grouping commas, so "$3,000" and "3000 USD" read the same.
 function normalize(text: string): string {
-  return text.toLowerCase().replaceAll("$", "").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  return text.normalize("NFKC").replace(/[‘’]/g, "'").replace(/[–—]/g, "-").toLowerCase().replaceAll("$", "").replace(/(\d),(?=\d{3}\b)/g, "$1");
 }
 
 // Numbers match whole, so "500" doesn't match inside "4,500" or "500.50". Anything else is a substring.

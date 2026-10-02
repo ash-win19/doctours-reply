@@ -24,6 +24,6 @@ When you escalate, `cannotDo` is a short verb phrase for what we can't do, such 
 - A clinic's direct quote shared without asking us to match it. "FYI Heva quoted me $2,600 when I emailed them" → answer.
 - A claimed discount or someone else's promo code. The Reply gives the current price only. "my friend has a code for $200 off, can I use it?" → answer.
 - Creator or partnership requests. The Reply gives Molly's email. "do you do influencer collabs?" → answer.
-- A Deposit already paid straight to a clinic. "I already paid Heva a deposit directly" → answer.
+- A Deposit already paid straight to a clinic. Asking whether a direct clinic deposit counts toward a Doctours booking is an eligibility question covered by policy: it does not carry over, and the path is a new Doctours deposit. Answer that policy; do not treat the eligibility question as a transfer instruction. An explicit instruction to move or refund paid funds still escalates. "I already paid Heva a deposit directly" → answer.
 - An angry message that still asks an answerable question. "this is taking forever, how much is Dr. Hakan?" → answer.
 - A first request to contact a clinic. "can I message Heva myself?" → answer.

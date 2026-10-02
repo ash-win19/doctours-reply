@@ -33,6 +33,12 @@ test("extra contradictory prices and fractional near-matches fail", () => {
   assert.equal(check("Silver is $3000.50 with a $500 deposit. Gold is $4500 with a $600 deposit.").ok, false);
 });
 
+test("correct remaining balances are distinct from package prices, and wrong balances fail", () => {
+  const response = "Silver costs $3,000 with a $500 deposit; the remaining balance is $2,500. Gold costs $4,500 with a $600 deposit; the remaining balance is $3,900.";
+  assert.equal(check(response).ok, true, check(response).detail);
+  assert.equal(check(response.replace("$2,500", "$2,400")).ok, false);
+});
+
 test("package fact checks are parsed and enforced by the case scorer", () => {
   const [evalCase] = parseCases(JSON.stringify([{
     id: "prices", group: "pricing", rule: "fresh package facts", text: "Compare packages", expect: { packageFacts: facts },

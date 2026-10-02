@@ -42,3 +42,9 @@ test("arbitrary model phrases cannot add sales content, sentences, or links", ()
     assert.equal(escalationReply("Needs an Operator", phrase).response, "I'm getting a person for you.");
   }
 });
+
+
+test("Escalation reasons are nonempty and bounded", () => {
+  assert.equal(escalationReply(" ", null).escalationReason, "Needs an Operator");
+  assert.equal(escalationReply("x".repeat(400), null).escalationReason?.length, 200);
+});

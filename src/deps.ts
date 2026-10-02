@@ -37,6 +37,7 @@ export function defaultRunnerDeps(): RunnerDeps {
     responderModel: process.env.RESPONDER_MODEL ?? "gpt-6.1-sol",
     triageModel: process.env.TRIAGE_MODEL ?? "gpt-6-luna",
     promptCache: process.env.PROMPT_CACHE !== "off",
+    concurrency: process.env.REPLY_CONCURRENCY === undefined ? undefined : Number(process.env.REPLY_CONCURRENCY),
     traceRoot: "traces",
     log,
   };

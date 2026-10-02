@@ -7,7 +7,7 @@ import { loadScorecard, saveScorecard } from "./eval/results.ts";
 import { buildScorecard, compareScorecards, formatScorecard } from "./eval/scorecard.ts";
 import { defaultRunnerDeps, log } from "./deps.ts";
 import { parseMode, type Mode } from "./pipeline.ts";
-import { runMessages } from "./runner.ts";
+import { runMessages, MAX_CONCURRENCY } from "./runner.ts";
 
 export type EvalArgs =
   | { kind: "run"; mode: Mode; caseFiles: string[]; repeat: number }
@@ -52,6 +52,7 @@ async function main(): Promise<void> {
     dirty: status.status === 0 ? status.stdout.trim().length > 0 : null,
     suiteHash: createHash("sha256").update(JSON.stringify({ cases, messages })).digest("hex"),
     promptCache: args.mode === "default" && deps.promptCache !== false,
+    concurrency: deps.concurrency ?? MAX_CONCURRENCY,
   };
   let allPassed = true;
   for (let repetition = 1; repetition <= args.repeat; repetition++) {

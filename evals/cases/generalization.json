@@ -321,6 +321,16 @@
         "Tuesday",
         "Thursday",
         "Friday"
+      ],
+      "calls": [
+        {
+          "tool": "getClinicPackagesTool"
+        }
+      ],
+      "excludes": [
+        "Wednesday",
+        "Saturday",
+        "Sunday"
       ]
     }
   },

@@ -20,7 +20,7 @@ export function checkPackageFacts(reply: Reply, facts: PackageFact[]): CheckResu
   const mentions = [...text.matchAll(pattern)];
   const problems: string[] = [];
   for (const fact of facts) {
-    const found = { price: [] as number[], deposit: [] as number[] };
+    const found = { price: [] as number[], deposit: [] as number[], balance: [] as number[] };
     for (let i = 0; i < mentions.length; i++) {
       const mention = mentions[i];
       if (mention[0].toLowerCase() !== fact.package.toLowerCase()) continue;
@@ -33,9 +33,14 @@ export function checkPackageFacts(reply: Reply, facts: PackageFact[]): CheckResu
         const after = segment.slice(amount.index! + amount[0].length, amounts[j + 1]?.index ?? segment.length);
         const prefix = /\bdeposit\s*(?:is|of|:|=|would be)?\s*$/i.test(before);
         const suffix = /^\s*(?:USD\s*)?(?:refundable\s+)?deposit\b/i.test(after);
+        const balance = /\b(?:remaining\s+balance|balance|remainder)\s*(?:is|of|:|=|would be)?\s*$/i.test(before)
+          || /^\s*(?:USD\s*)?(?:remaining(?:\s+balance)?|balance|remainder)\b/i.test(after);
         const value = Number((amount[1] ?? amount[2] ?? amount[3]).replaceAll(",", ""));
-        found[prefix || suffix ? "deposit" : "price"].push(value);
+        found[prefix || suffix ? "deposit" : balance ? "balance" : "price"].push(value);
       }
+    }
+    if (found.balance.some((value) => value !== fact.price - fact.deposit)) {
+      problems.push(`${fact.package} remaining balance must be ${fact.price - fact.deposit}`);
     }
     for (const role of ["price", "deposit"] as const) {
       const values = found[role];

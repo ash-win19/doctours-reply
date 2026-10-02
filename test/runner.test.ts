@@ -203,3 +203,13 @@ test("trace suffixes cannot overwrite another input's trace", async () => {
     assert.equal(results.length, ids.length);
   }
 });
+
+
+test("configured concurrency bounds live requests and rejects invalid limits", async () => {
+  const model = echoModel(() => 1);
+  await runMessages(inputs.slice(0, 3), "baseline", { ...setup(), create: model.create, responderModel: "fake", concurrency: 1 });
+  assert.equal(model.peak(), 1);
+  for (const concurrency of [0, 5, 1.5, NaN]) {
+    await assert.rejects(runMessages([], "baseline", { ...setup(), create: model.create, responderModel: "fake", concurrency }), /REPLY_CONCURRENCY/);
+  }
+});

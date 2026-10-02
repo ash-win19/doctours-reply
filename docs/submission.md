@@ -19,7 +19,7 @@ The submission must run from a clone, answer unseen messages using the packet's 
 
 ## Commands
 
-Configure `OPENAI_API_KEY` in the repository-root `.env`. Never commit that file. Both configured model ids must be accessible to the key; override `RESPONDER_MODEL` and `TRIAGE_MODEL` if needed. Use the same responder configuration for both modes in a comparison.
+Configure `OPENAI_API_KEY` in the repository-root `.env`. Never commit that file. Both configured model ids must be accessible to the key; override `RESPONDER_MODEL` and `TRIAGE_MODEL` if needed. Use the same responder configuration and concurrency for both modes in a comparison. Run them sequentially to avoid sharing and exhausting the API token-per-minute allowance.
 
 ```sh
 npm ci
@@ -29,8 +29,8 @@ npm run demo -- --offline
 npm run demo
 npm run eval -- --mode baseline --cases packet-check
 npm run eval -- --cases packet-check
-npm run eval -- --mode baseline
-npm run eval
+REPLY_CONCURRENCY=1 npm run eval -- --mode baseline
+REPLY_CONCURRENCY=1 npm run eval
 npm run eval -- --cases escalation --cases generalization --repeat 3
 npm run eval -- --compare BASELINE_RUN_ID DEFAULT_RUN_ID
 ```

@@ -48,7 +48,7 @@ export interface Scorecard {
     fallbackMessages: number;
     repairedMessages: number;
   };
-  provenance?: { commit: string | null; dirty: boolean | null; suiteHash: string; promptCache: boolean };
+  provenance?: { commit: string | null; dirty: boolean | null; suiteHash: string; promptCache: boolean; concurrency?: number };
 }
 
 export function median(values: number[]): number {

@@ -233,3 +233,12 @@ test("attachments are filtered before the cap, preserving tool-returned order an
   assert.ok(result.failures.some((failure) => failure.name === "attachments"), "still ask for a repair after removal");
   assert.equal(validate(reply("Here it is.", { attachmentUrls: ["https://made.up/photo.jpg"] }), evidence).reply.attachmentUrls, null);
 });
+
+
+test("policy-prescribed provider URLs can appear in text but never ungrounded attachments", () => {
+  const response = "Select the hair-loss option on either.\nhttps://hims.com\nhttps://keeps.com";
+  const result = validate(reply(response), emptyEvidence());
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.reply.response, response);
+  assert.equal(validate({ ...reply(response), attachmentUrls: ["https://hims.com"] }, emptyEvidence()).reply.attachmentUrls, null);
+});

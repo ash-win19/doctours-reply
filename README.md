@@ -44,7 +44,7 @@ npm run demo -- --offline       # Guard-only demo; no model calls or real key.
 
 A context file is validated JSON. Missing fields inherit the packet values, except omitted collection status is derived from the supplied intake state. Its `toolOverrides` map supplies Patient-specific tool results. Override any packet result that would contradict the new Patient. See [Patient context and fixtures](docs/runtime.md#patient-context).
 
-The packet tools are fixture functions, not live clinic or payment integrations. Each input message runs independently against its selected context. Returned `workingMemoryUpdates` do not update subsequent messages automatically. Up to four messages run concurrently.
+The packet tools are fixture functions, not live clinic or payment integrations. Each input message runs independently against its selected context. Returned `workingMemoryUpdates` do not update subsequent messages automatically. Up to four messages run concurrently. Set `REPLY_CONCURRENCY=1` for sequential benchmarks or tighter API rate limits.
 
 Each message writes a trace under `traces/<runId>/`. Filenames use bounded, sanitized message ids, with suffixes reserved case-insensitively to prevent overwrites. Failed drafting escalates that message after SDK retries; configuration failures such as a missing or rejected key stop the run with a nonzero exit. See [runtime details](docs/runtime.md) for retries, tools, skills and trace fields.
 
@@ -85,7 +85,7 @@ The trace records the path, triage decision, initially resolved and later loaded
 |---|---|---|
 | Guard escalation | Code only | Zero model tokens. |
 | Triage | Escalation policy, skill index, state card, four recent chat turns, incoming message | API measurement pending. |
-| Responder core | Voice, grounding, links, precedence, Reply fields, skill index, state card, memory and recent chat | Packet fixture has 11,545 characters. Existing budget test estimates about 2,886 tokens; exact model-token verification is pending. |
+| Responder core | Voice, grounding, links, precedence, Reply fields, skill index, state card, memory and recent chat | Packet fixture has 11,656 characters. Existing budget test estimates about 2,914 tokens; exact model-token verification is pending. |
 | Pipeline Status module | One module chosen by code | PRE_CLINICAL_SENT has 1,592 characters; model-token measurement pending. |
 | Skills and tools | Chosen skills, required dependencies, and their tool schemas | Varies by message. Saved evals now report median loaded skills and total input tokens. |
 | Call-history reader | Reader rules, question and full call records | Only when requested; usage is recorded under the parent message. |
