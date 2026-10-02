@@ -1,7 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import type { SkillSummary } from "./prompt.ts";
-import { TOOL_NAMES } from "./tools.ts";
+import { SUBAGENT_TOOL_NAMES, TOOL_NAMES } from "./tools.ts";
+
+// The packet's functions, plus the subagent tools the skill responder runs itself.
+const KNOWN_TOOLS: string[] = [...TOOL_NAMES, ...SUBAGENT_TOOL_NAMES];
 
 const SKILLS_DIR = new URL("../prompts/skills/", import.meta.url);
 const STATUS_DIR = new URL("../prompts/status/", import.meta.url);
@@ -47,7 +50,7 @@ export function parseSkill(raw: string, path: string): Skill {
     if (!fields.get(field)) throw new Error(`${path}: frontmatter needs ${field}`);
   }
   const [tools, requires, overrides, sources] = LIST_FIELDS.map((field) => parseList(fields.get(field)!, field, path));
-  const unknownTools = tools.filter((tool) => !TOOL_NAMES.includes(tool));
+  const unknownTools = tools.filter((tool) => !KNOWN_TOOLS.includes(tool));
   if (unknownTools.length > 0) throw new Error(`${path}: no tool named ${unknownTools.join(", ")}`);
   return {
     id: fields.get("id")!,

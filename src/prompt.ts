@@ -104,3 +104,11 @@ export function buildResponderSystemPrompt({
 export function buildResponderUserMessage(message: string, patient: Pick<CoreContext, "SENDER_DISPLAY_NAME">): string {
   return fill(readPrompt("responder/user.md"), { MESSAGE: message, SENDER_DISPLAY_NAME: patient.SENDER_DISPLAY_NAME });
 }
+
+export function buildCallHistorySystemPrompt(): string {
+  return readPrompt("call-history/system.md");
+}
+
+export function buildCallHistoryUserMessage(question: string, callRecords: unknown): string {
+  return fill(readPrompt("call-history/user.md"), { QUESTION: question, CALL_RECORDS: callRecords });
+}

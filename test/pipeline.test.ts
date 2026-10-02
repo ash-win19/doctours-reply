@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { respond, type PipelineTrace } from "../src/pipeline.ts";
-import { DraftingError, type CreateResponse } from "../src/model-calls.ts";
+import { DraftingError, tokenUsage, type CreateResponse } from "../src/model-calls.ts";
 import { SetupError } from "../src/errors.ts";
 import { loadSkillRegistry } from "../src/skills.ts";
 import { VALID_REPLY, firstUserText, functionCall, scriptedModel, triageDecision } from "./fakes.ts";
@@ -213,4 +213,21 @@ test("a repair can't change escalate, so the first version ships when it tries",
   assert.equal(reply.escalate, false);
   assert.equal(reply.response, "Silver is $9.");
   assert.equal((trace as PipelineTrace).responder!.validation!.shipped, "first");
+});
+
+test("the call-history subagent runs on the triage model, nested under the message's trace", async () => {
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["call-history"] }))],
+    [functionCall("askCallHistory", { question: "What did we talk about on the call?" })],
+    [functionCall("submitAnswer", { answer: "Your hairline and your 4C curls.", callIds: ["66666666-6666-4666-8666-666666666666"] })],
+    [functionCall("submitReply", VALID_REPLY)],
+  ]);
+  const { trace } = await respond("what did we talk about on the call?", "default", options(model.create));
+  assert.equal(model.requests[2].model, "triage-model");
+  const pipelineTrace = trace as PipelineTrace;
+  assert.deepEqual(pipelineTrace.modelCalls.map((call) => call.step), ["triage", "responder", "callHistory", "responder"]);
+  const responder = pipelineTrace.responder!;
+  assert.ok("subagents" in responder);
+  assert.equal(responder.subagents[0].subagent, "callHistory");
+  assert.deepEqual(tokenUsage(trace), { inputTokens: 400, outputTokens: 200 });
 });

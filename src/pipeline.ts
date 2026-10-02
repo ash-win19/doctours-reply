@@ -39,7 +39,7 @@ export interface PipelineTrace extends Trace {
   path: PipelinePath | null;
   guards: { cardNumberFound: boolean; humanRequested: boolean };
   triage: StepTrace<TriageTrace> | null;
-  responder: StepTrace<BaselineTrace | SkillResponderTrace> | null;
+  responder: StepTrace<BaselineTrace> | StepTrace<SkillResponderTrace> | null;
   // Set when the skill-based responder couldn't take the message, so the baseline responder answered.
   fallback: { to: "baseline"; reason: string } | null;
 }
@@ -117,7 +117,7 @@ export async function respond(
     trace.path = "skills";
     const { reply, trace: responderTrace } = await respondWithSkills(
       screening.redactedText,
-      { registry, chosen: decision.skills, patient: context, status, inputCardDigits },
+      { registry, chosen: decision.skills, patient: context, status, inputCardDigits, subagentModel: options.triageModel },
       responderOptions,
     );
     trace.responder = detachCalls(responderTrace, trace);

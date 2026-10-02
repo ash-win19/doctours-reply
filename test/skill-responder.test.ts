@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
-import { respondWithSkills } from "../src/skill-responder.ts";
+import { respondWithSkills, type SkillResponderTrace } from "../src/skill-responder.ts";
+import { DraftingError } from "../src/model-calls.ts";
 import { loadSkillRegistry, statusModule } from "../src/skills.ts";
 import { escalationReply } from "../src/escalation.ts";
 import * as context from "../src/context.ts";
@@ -91,13 +92,13 @@ test("loadSkill for an unknown or loaded skill says so", async () => {
   const { model, result } = run(
     ["payments"],
     [
-      [functionCall("loadSkill", { id: "travel" })],
+      [functionCall("loadSkill", { id: "ghost" })],
       [functionCall("loadSkill", { id: "payments" })],
       [functionCall("submitReply", VALID_REPLY)],
     ],
   );
   const { trace } = await result;
-  assert.match(lastOutput(model.requests[1]), /No skill named travel/);
+  assert.match(lastOutput(model.requests[1]), /No skill named ghost/);
   assert.match(lastOutput(model.requests[2]), /already loaded/);
   assert.equal(trace.toolCalls[0].isError, true);
 });
@@ -259,4 +260,112 @@ test("an Escalation from the escalate tool skips the validator", async () => {
   const { reply, trace } = await result;
   assert.equal(reply.response, "I can't refund a payment. I'm getting a person for you.");
   assert.deepEqual(trace.validation.runs, []);
+});
+
+const CALL_ANSWER = { answer: "You said your hair is 4C.", callIds: ["66666666-6666-4666-8666-666666666666"] };
+
+function runWithSubagent(chosen: string[], turns: FakeFunctionCall[][]) {
+  const model = scriptedModel(turns);
+  const status = statusModule(context.PIPELINE_STATUS);
+  const result = respondWithSkills(
+    "did I mention my hair type on the call?",
+    { registry, chosen, patient: context, status, subagentModel: "subagent-model" },
+    { create: model.create, model: "responder-model" },
+  );
+  return { model, result };
+}
+
+test("askCallHistory is offered only with the call-history skill", async () => {
+  const withSkill = runWithSubagent(["call-history"], [[functionCall("submitReply", VALID_REPLY)]]);
+  await withSkill.result;
+  assert.ok(toolNames(withSkill.model.requests[0]).includes("askCallHistory"));
+  const without = runWithSubagent(["clinic-packages"], [[functionCall("submitReply", VALID_REPLY)]]);
+  await without.result;
+  assert.ok(!toolNames(without.model.requests[0]).includes("askCallHistory"));
+});
+
+test("askCallHistory runs the subagent and the responder sees only its answer, never a transcript", async () => {
+  const { model, result } = runWithSubagent(
+    ["call-history"],
+    [
+      [functionCall("askCallHistory", { question: "Did they mention their hair type?" })],
+      [functionCall("submitAnswer", CALL_ANSWER)],
+      [functionCall("submitReply", VALID_REPLY)],
+    ],
+  );
+  const { trace } = await result;
+  assert.equal(model.requests[1].model, "subagent-model");
+  assert.equal(lastOutput(model.requests[2]), "You said your hair is 4C.");
+  for (const request of [model.requests[0], model.requests[2]]) {
+    assert.doesNotMatch(JSON.stringify(request), /Thanks for hopping on/);
+  }
+  assert.deepEqual(trace.modelCalls.map((call) => call.step), ["responder", "callHistory", "responder"]);
+  assert.equal(trace.subagents.length, 1);
+  const [subagent] = trace.subagents;
+  assert.equal(subagent.subagent, "callHistory");
+  assert.equal(subagent.question, "Did they mention their hair type?");
+  assert.equal(subagent.answer, "You said your hair is 4C.");
+  assert.deepEqual(subagent.callIds, CALL_ANSWER.callIds);
+  assert.deepEqual(subagent.usage, { inputTokens: 100, outputTokens: 50 });
+  assert.equal(typeof subagent.latencyMs, "number");
+});
+
+test("loading the call-history skill mid-turn adds askCallHistory", async () => {
+  const { model, result } = runWithSubagent(
+    [],
+    [[functionCall("loadSkill", { id: "call-history" })], [functionCall("submitReply", VALID_REPLY)]],
+  );
+  await result;
+  assert.ok(!toolNames(model.requests[0]).includes("askCallHistory"));
+  assert.ok(toolNames(model.requests[1]).includes("askCallHistory"));
+});
+
+test("a failed subagent fails the message, keeping the responder's trace and the subagent's calls", async () => {
+  const bad = [functionCall("submitAnswer", { answer: 42 })];
+  const { result } = runWithSubagent(
+    ["call-history"],
+    [[functionCall("askCallHistory", { question: "What did we talk about?" })], bad, bad],
+  );
+  await assert.rejects(result, (error: unknown) => {
+    assert.ok(error instanceof DraftingError);
+    assert.match(error.message, /askCallHistory/);
+    const trace = error.trace as SkillResponderTrace;
+    assert.match(trace.system, /# SKILL: call-history/);
+    assert.deepEqual(trace.modelCalls.map((call) => call.step), ["responder", "callHistory", "callHistory"]);
+    const [record] = trace.subagents;
+    assert.equal(record.subagent, "callHistory");
+    assert.equal(record.answer, null);
+    assert.match(record.error!, /submitAnswer/);
+    assert.deepEqual(record.usage, { inputTokens: 200, outputTokens: 100 });
+    assert.equal(typeof record.latencyMs, "number");
+    return true;
+  });
+});
+
+test("askCallHistory without a question goes back to the responder as an error", async () => {
+  const { model, result } = runWithSubagent(
+    ["call-history"],
+    [[functionCall("askCallHistory", {})], [functionCall("submitReply", VALID_REPLY)]],
+  );
+  const { trace } = await result;
+  assert.match(lastOutput(model.requests[1]), /Invalid input for askCallHistory/);
+  assert.equal(trace.toolCalls[0].isError, true);
+  assert.deepEqual(trace.subagents, []);
+});
+
+test("an amount or URL in the call-history answer isn't evidence, so a Reply repeating it gets a repair turn", async () => {
+  const answer = { answer: "We said Silver was $2,600, see https://heva.example/quote.", callIds: CALL_ANSWER.callIds };
+  const repeated = { ...VALID_REPLY, response: "On the call we said Silver was $2,600." };
+  const { model, result } = runWithSubagent(
+    ["call-history"],
+    [
+      [functionCall("askCallHistory", { question: "What price did we discuss?" })],
+      [functionCall("submitAnswer", answer)],
+      [functionCall("submitReply", repeated)],
+      [functionCall("submitReply", repeated)],
+    ],
+  );
+  const { trace } = await result;
+  assert.equal(trace.validation.repairRan, true);
+  assert.match((inputItems(model.requests[3]).at(-1) as { content: string }).content, /\$2,600 isn't in this turn's tool results/);
 });
