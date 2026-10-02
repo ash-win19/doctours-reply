@@ -36,6 +36,14 @@ export function redactCardNumbers(text: string): { text: string; found: boolean 
   return { text: redacted, found };
 }
 
+// Every card-like digit run and "card ending in" group in a message, Luhn or not, so a Reply can be kept from
+// repeating them even when they weren't redacted.
+export function cardDigitsIn(text: string): string[] {
+  const runs = [...text.matchAll(CARD_RUN)].map(([run]) => run.replace(/\D/g, ""));
+  const endings = [...text.matchAll(CARD_ENDING)].map(([match]) => match.slice(-4));
+  return [...runs, ...endings];
+}
+
 const PERSON = String.raw`(?:a\s+|an\s+|some\s+)?(?:real\s+|live\s+|actual\s+)?(?:human(?:\s+being)?|person|someone|somebody|agent|representative|manager)`;
 
 // "Someone at Heva" is a clinic contact, which ADR 0002 answers the first time.

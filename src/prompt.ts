@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import * as context from "./context.ts";
 import { buildStateCard, type StateCardContext } from "./state-card.ts";
+import { CLINIC_PAGE_TEMPLATE, MAX_ATTACHMENTS, STATIC_URLS } from "./validator.ts";
 
 const PROMPTS_DIR = new URL("../prompts/", import.meta.url);
 
@@ -68,6 +69,10 @@ export function buildCorePrompt(patient: CoreContext, skillIndex: SkillSummary[]
   return fill(readPrompt("core.md"), {
     COORDINATOR_DISPLAY_NAME: patient.COORDINATOR_DISPLAY_NAME,
     SKILL_INDEX: skillList(skillIndex),
+    // The validator enforces the same allowlist, so both come from its constants.
+    STATIC_URLS: STATIC_URLS.map(({ url, use }) => `${url} (${use})`).join(", "),
+    CLINIC_PAGE: CLINIC_PAGE_TEMPLATE,
+    MAX_ATTACHMENTS: String(MAX_ATTACHMENTS),
     STATE_CARD: buildStateCard(patient),
     CLINIC_FLAGS: patient.CLINIC_FLAGS,
     RECENT_CALLS: patient.RECENT_CALLS,

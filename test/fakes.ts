@@ -27,6 +27,18 @@ export function firstUserText(request: ResponseCreateParamsNonStreaming): string
   return (user as { content: string }).content;
 }
 
+// Every input item a request sent: messages, reasoning, function calls and their outputs.
+export function inputItems(request: ResponseCreateParamsNonStreaming): ResponseInputItem[] {
+  return request.input as ResponseInputItem[];
+}
+
+// The outputs a request sent back for earlier function calls, in order.
+export function functionOutputs(request: ResponseCreateParamsNonStreaming): ResponseInputItem.FunctionCallOutput[] {
+  return inputItems(request).filter(
+    (item): item is ResponseInputItem.FunctionCallOutput => "type" in item && item.type === "function_call_output",
+  );
+}
+
 // The names of the function tools a request offered.
 export function toolNames(request: ResponseCreateParamsNonStreaming): string[] {
   return (request.tools ?? []).flatMap((tool) => (tool.type === "function" ? [tool.name] : []));

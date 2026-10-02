@@ -4,19 +4,9 @@ import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai
 import { respondBaseline } from "../src/responder.ts";
 import { MAX_TOOL_ROUNDS, type ResponderTrace } from "../src/tool-loop.ts";
 import { DraftingError, tokenUsage } from "../src/model-calls.ts";
-import { VALID_REPLY, scriptedModel, functionCall, toolNames } from "./fakes.ts";
+import { VALID_REPLY, scriptedModel, functionCall, functionOutputs, inputItems, toolNames } from "./fakes.ts";
 
 const options = { model: "fake-model" };
-
-function inputItems(request: ResponseCreateParamsNonStreaming): ResponseInputItem[] {
-  return request.input as ResponseInputItem[];
-}
-
-function functionOutputs(request: ResponseCreateParamsNonStreaming) {
-  return inputItems(request).filter(
-    (item): item is ResponseInputItem.FunctionCallOutput => "type" in item && item.type === "function_call_output",
-  );
-}
 
 test("returns the Reply the model submits", async () => {
   const model = scriptedModel([[functionCall("submitReply", VALID_REPLY)]]);

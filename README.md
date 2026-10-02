@@ -53,8 +53,27 @@ Escalation is settled before any Reply is drafted, and the responder can still e
    - If the reader still fails after retries, its record keeps the usage, latency and error, and the message fails like any other drafting failure and escalates. A Reply written without the answer could only guess at what was said.
    - Subagent tools are listed by name in `src/tools.ts` and defined in one map in `src/subagent-tools.ts`, so adding another means one name and one map entry.
 6. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), or the Pipeline Status has no module, the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
+7. **Validator.** Every Reply that isn't an Escalation goes through `src/validator.ts` before output, including a Reply from the baseline fallback. Escalations from the guards, triage or the `escalate` tool skip it, and it never changes `escalate`. See [Validator](#validator).
 
 The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `skills`, `baseline` or `drafting-failed`), the skills triage chose and any loaded mid-turn, every tool call with its arguments and result, and every model call tagged with its step. Trace files never hold card digits in this mode. Baseline mode still sends the raw text to the model, so its `userMessage` does.
+
+### Validator
+
+Some failures are cheap to catch in code, so every Reply is checked against what this turn's tool results said. As tool results arrive, the responder collects their URLs, clinic slugs and money values: numbers under a price, amount, deposit, fee or cost key, plus numbers written next to "$" or "USD". Ids and counts never count. The pipeline adds the card digit runs the guards found in the Patient's raw message. The `askCallHistory` answer is not evidence: it's a model's summary of the calls, so a URL or amount in it reaches a Reply only if a packet tool returned it this turn. A Reply that escalates is never validated, and the validator never changes `escalate`.
+
+Fixed in code right away:
+- A URL that no tool returned this turn and that isn't on the static allowlist is removed, along with its line. This also asks for a repair, so a Reply isn't left saying "the link below" with no link. The allowlist is the Consultation link, the image-upload link, and `https://www.doctours.com/clinic/{slug}` for a slug a tool returned this turn. The core prompt is filled from the same constants in `src/validator.ts`.
+- The Patient's card numbers are removed: whole runs anywhere, and the last four only where they follow "ending in" or "last four" style wording.
+- URLs move to the last lines, one per line, in order of first mention. A URL inside a sentence becomes "the link below".
+- Markdown markers are stripped. URLs keep their underscores.
+- Field consistency: `escalationReason` is null when `escalate` is false, `followUpTiming` is null when `shouldFollowUp` is false, and an empty `attachmentUrls` is null. The tool loop sets `templateId` to null on every submitted Reply.
+
+Checked, then repaired once:
+- Every amount next to "$" or "USD" is a money value in this turn's tool results, or on the policy list (the $25 cancellation fee).
+- No banned phrases: an assessment turnaround window (a window tied to the assessment being ready, done, back, sent or delivered), "I'll get back to you", saying "a coordinator will…" or "someone from our team", and advice to bring, pack, wear, buy or pick out a head covering. The list is `BANNED_PHRASES`, with the source rule next to each entry.
+- `attachmentUrls` has at most 3 entries, all returned by a tool.
+
+If anything still fails, the responder gets one repair turn. A `user`-role message lists the failures. The model may make up to 2 lookups, and its last call must submit the Reply again. Further submitReply calls in the response that asked for the repair don't count as the repair. The version with fewer failures ships, unless the repair changed `escalate`, in which case the first version ships. If the repair doesn't come back as a valid Reply, the first version ships. Anything still failing ships anyway. The trace's `responder.validation` holds each run's fixes and check results, whether repair ran, and which version shipped.
 
 ### Skills
 

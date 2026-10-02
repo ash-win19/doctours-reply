@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectHumanRequest, redactCardNumbers, screenMessage } from "../src/guards.ts";
+import { cardDigitsIn, detectHumanRequest, redactCardNumbers, screenMessage } from "../src/guards.ts";
 
 test("redacts a card number written as one digit run", () => {
   const { text, found } = redactCardNumbers("Use 4111111111111111 for the deposit");
@@ -89,4 +89,9 @@ test("screening redacts card numbers and forces an Escalation for cards or a per
     humanRequested: false,
     forceEscalate: null,
   });
+});
+
+test("card digits in a message are listed, including runs that fail the Luhn check", () => {
+  assert.deepEqual(cardDigitsIn("use 4111 1111 1111 1112, or my card ending in 4242"), ["4111111111111112", "4242"]);
+  assert.deepEqual(cardDigitsIn("What does Heva cost?"), []);
 });

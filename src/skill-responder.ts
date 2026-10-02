@@ -12,13 +12,21 @@ import type { Reply } from "./reply.ts";
 import type { Skill, SkillRegistry } from "./skills.ts";
 import { SUBAGENT_TOOLS, isSubagentTool, type SubagentContext, type SubagentRecord } from "./subagent-tools.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
-import { runTool, toolDefinition, toolsNamed, type SubagentToolName } from "./tools.ts";
+import { toolDefinition, toolsNamed, type SubagentToolName } from "./tools.ts";
+import {
+  emptyEvidence,
+  emptyValidationTrace,
+  runToolForEvidence,
+  validatingSubmit,
+  type ValidationTrace,
+} from "./validator.ts";
 
 export interface SkillResponderTrace extends ResponderTrace {
   // Skills triage chose, and skills the responder loaded mid-turn with loadSkill.
   skills: { chosen: string[]; loaded: string[] };
   // One record per subagent call. Their model calls are in modelCalls too, under their own step.
   subagents: SubagentRecord[];
+  validation: ValidationTrace;
 }
 
 const LOAD_SKILL = "loadSkill";
@@ -40,6 +48,8 @@ export interface SkillResponderInput {
   patient: CoreContext & SubagentContext;
   // The module for the Patient's Pipeline Status, which code picks.
   status: string | null;
+  // Card digit runs in the Patient's raw message, which the validator keeps out of the Reply.
+  inputCardDigits?: string[];
   // The small model subagents run on. Defaults to the responder's model.
   subagentModel?: string;
 }
@@ -47,7 +57,7 @@ export interface SkillResponderInput {
 // Writes the Reply from the core, the Pipeline Status module and the chosen skills, with only those skills' tools.
 export async function respondWithSkills(
   message: string,
-  { registry, chosen, patient, status, subagentModel }: SkillResponderInput,
+  { registry, chosen, patient, status, inputCardDigits = [], subagentModel }: SkillResponderInput,
   options: ModelOptions,
 ): Promise<{ reply: Reply; trace: SkillResponderTrace }> {
   const loaded: Skill[] = registry.resolve(chosen);
@@ -64,7 +74,9 @@ export async function respondWithSkills(
     modelCalls: [],
     toolCalls: [],
     finalOutput: null,
+    validation: emptyValidationTrace(),
   };
+  const evidence = emptyEvidence(inputCardDigits);
   const loadSkillTool = toolDefinition(
     LOAD_SKILL,
     "Load another skill's rules and tools when this message needs rules you don't have.",
@@ -108,9 +120,12 @@ export async function respondWithSkills(
     if (!allowedTools().includes(name)) {
       return { isError: true, output: `${name} isn't available. Load the skill that has it with ${LOAD_SKILL}.` };
     }
+    // A subagent's answer is a model's summary, not tool data, so it never becomes evidence for the validator.
     if (isSubagentTool(name)) return runSubagent(name, input);
-    return runTool(name, input);
+    return runToolForEvidence(name, input, evidence);
   }
+
+  const submit = validatingSubmit(evidence, trace.validation);
 
   try {
     const reply = await runToolLoop(
@@ -126,7 +141,7 @@ export async function respondWithSkills(
         ],
         callTool,
         // Only the escalate tool escalates, so a submitted Reply never does.
-        onSubmit: (submitted) => ({ ...submitted, templateId: null, escalate: false, escalationReason: null }),
+        onSubmit: (submitted) => submit({ ...submitted, escalate: false, escalationReason: null }),
       },
       options,
     );
