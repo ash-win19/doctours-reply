@@ -7,8 +7,8 @@ The combined implementation and offline review are complete. Live acceptance rem
 | Issues | Offline result | Remaining acceptance |
 |---|---|---|
 | AW-95 through AW-100 | Built, integration-reviewed, fixes pushed on AW-98. Escalation decisions accepted. | Live packet, escalation, skill, LEAD and reader evals; merge and ticket closeout. |
-| AW-101 | Explicit cache endpoints, opt-out, saved metrics and provenance implemented and reviewed. | Cache-hit evidence, measured trimming with no loss, final regression run. |
-| AW-102 | Seven-section README, original eight-problem mapping, examples and runtime reference prepared. | Real final measurements, live five-message fresh-clone run, final review and merge. |
+| AW-101 | [Draft PR #9](https://github.com/ash-win19/doctours-reply/pull/9): explicit cache endpoints, opt-out, saved metrics and provenance implemented and reviewed. | Cache-hit evidence, measured trimming with no loss, final regression run. |
+| AW-102 | [Draft PR #10](https://github.com/ash-win19/doctours-reply/pull/10): seven-section README, original eight-problem mapping, examples and runtime reference reviewed. | Real final measurements, live five-message fresh-clone run, final review and merge. |
 
 The draft README labels missing results as pending. The only published live scorecard remains the historical five-case baseline. Do not substitute unit-test results or token estimates for live measurements.
 
@@ -68,4 +68,10 @@ Merge AW-101 and AW-102 only when their own pending criteria are satisfied. If t
 
 ## Fresh-clone verification
 
-Offline fresh-clone verification is pending while this document is prepared. A guard-only smoke test can run with a nonsecret placeholder key and a loopback API origin; no model request should occur. This does not replace the live five-message acceptance run.
+Cloned the pushed AW-102 branch from GitHub into a separate temporary directory at `ecfe12c`, with no linked dependencies or `.env`. Installation, typecheck and all 236 unit tests passed.
+
+The documented quiet CLI command was checked with the two guard-only inputs in `examples/offline-escalations.json`, once with the packet context and once with the LEAD context. It produced valid JSON in input order and four trace files with zero model calls and no input card digits. The smoke test used a nonsecret placeholder key and a loopback API origin, so it could not use a live model.
+
+The full packet command with no key failed clearly, returned a nonzero exit, and left stdout empty. These checks establish installability and offline CLI behavior. The five-message live run, baseline example and LEAD model reply remain pending a real key.
+
+Standards and Spec reviews found two inherited runtime-documentation issues: a command without npm's `--silent` flag, and a historical cache percentage without saved evidence. Both were corrected before the fresh clone. Seven-section order, all local document links, source-problem mapping, saved baseline values and example shapes were verified.
