@@ -12,6 +12,7 @@ import type { Reply } from "./reply.ts";
 import type { Skill, SkillRegistry } from "./skills.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
 import { runTool, toolDefinition, toolsNamed } from "./tools.ts";
+import { collectEvidence, emptyEvidence, emptyValidationTrace, validatingSubmit } from "./validator.ts";
 
 export interface SkillResponderTrace extends ResponderTrace {
   // Skills triage chose, and skills the responder loaded mid-turn with loadSkill.
@@ -37,12 +38,14 @@ export interface SkillResponderInput {
   patient: CoreContext;
   // The module for the Patient's Pipeline Status, which code picks.
   status: string | null;
+  // Card digit runs in the Patient's raw message, which the validator keeps out of the Reply.
+  inputCardDigits?: string[];
 }
 
 // Writes the Reply from the core, the Pipeline Status module and the chosen skills, with only those skills' tools.
 export async function respondWithSkills(
   message: string,
-  { registry, chosen, patient, status }: SkillResponderInput,
+  { registry, chosen, patient, status, inputCardDigits = [] }: SkillResponderInput,
   options: ModelOptions,
 ): Promise<{ reply: Reply; trace: SkillResponderTrace }> {
   const loaded: Skill[] = registry.resolve(chosen);
@@ -58,7 +61,9 @@ export async function respondWithSkills(
     modelCalls: [],
     toolCalls: [],
     finalOutput: null,
+    validation: emptyValidationTrace(),
   };
+  const evidence = emptyEvidence(inputCardDigits);
   const loadSkillTool = toolDefinition(
     LOAD_SKILL,
     "Load another skill's rules and tools when this message needs rules you don't have.",
@@ -88,8 +93,12 @@ export async function respondWithSkills(
     if (!allowedTools().includes(name)) {
       return { isError: true, output: `${name} isn't available. Load the skill that has it with ${LOAD_SKILL}.` };
     }
-    return runTool(name, input);
+    const run = runTool(name, input);
+    if (!run.isError) collectEvidence(evidence, run.output);
+    return run;
   }
+
+  const submit = validatingSubmit(evidence, trace.validation!);
 
   try {
     const reply = await runToolLoop(
@@ -98,7 +107,8 @@ export async function respondWithSkills(
         tools: () => [...toolsNamed(allowedTools()), loadSkillTool, escalateTool],
         callTool,
         // Only the escalate tool escalates, so a submitted Reply never does.
-        onSubmit: (submitted) => ({ ...submitted, templateId: null, escalate: false, escalationReason: null }),
+        onSubmit: (submitted) =>
+          submit({ ...submitted, templateId: null, escalate: false, escalationReason: null }),
       },
       options,
     );

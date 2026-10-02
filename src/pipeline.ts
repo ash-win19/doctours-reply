@@ -1,7 +1,7 @@
 import * as context from "./context.ts";
 import { SetupError } from "./errors.ts";
 import { escalationReply } from "./escalation.ts";
-import { screenMessage } from "./guards.ts";
+import { cardDigitsIn, screenMessage } from "./guards.ts";
 import type { Reply } from "./reply.ts";
 import { DraftingError, type CreateResponse, type Step, type Trace } from "./model-calls.ts";
 import { respondBaseline } from "./responder.ts";
@@ -103,20 +103,22 @@ export async function respond(
     }
 
     step = "responder";
+    // The validator keeps these out of the Reply, as a second safety after redaction.
+    const validation = { inputCardDigits: cardDigitsIn(text) };
     const status = statusModule(context.PIPELINE_STATUS);
     const reason = fallbackReason(registry, decision.skills, status, context.PIPELINE_STATUS);
     if (reason) {
       // A message that needs a skill that doesn't exist yet still gets the original prompt's full rules.
       trace.path = "baseline";
       trace.fallback = { to: "baseline", reason };
-      const { reply, trace: responderTrace } = await respondBaseline(screening.redactedText, responderOptions);
+      const { reply, trace: responderTrace } = await respondBaseline(screening.redactedText, responderOptions, validation);
       trace.responder = detachCalls(responderTrace, trace);
       return { reply, trace };
     }
     trace.path = "skills";
     const { reply, trace: responderTrace } = await respondWithSkills(
       screening.redactedText,
-      { registry, chosen: decision.skills, patient: context, status },
+      { registry, chosen: decision.skills, patient: context, status, ...validation },
       responderOptions,
     );
     trace.responder = detachCalls(responderTrace, trace);

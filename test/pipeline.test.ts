@@ -156,3 +156,33 @@ test("baseline mode skips guards and triage", async () => {
   assert.equal(model.requests.length, 1);
   assert.match(model.requests[0].instructions as string, /^# IDENTITY/);
 });
+
+const FABRICATED = { ...VALID_REPLY, response: "Pay using the link below.\nhttps://www.doctours.com/payment/made-up" };
+
+test("in the default mode, a Reply from the baseline fallback is validated too", async () => {
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
+    [functionCall("submitReply", FABRICATED)],
+  ]);
+  const { reply, trace } = await respond("How do I pay?", "default", options(model.create));
+  assert.equal(reply.response, "Pay using the link below.");
+  assert.equal((trace as PipelineTrace).responder!.validation!.runs.length, 1);
+});
+
+test("baseline mode stays the untouched before, with no validator", async () => {
+  const model = scriptedModel([[functionCall("submitReply", FABRICATED)]]);
+  const { reply, trace } = await respond("How do I pay?", "baseline", options(model.create));
+  assert.equal(reply.response, FABRICATED.response);
+  assert.equal((trace as { validation?: unknown }).validation, undefined);
+});
+
+test("card digits that weren't redacted still never reach the Reply", async () => {
+  // Fails the Luhn check, so the guards let it through.
+  const message = "my card number is 4111 1111 1111 1112, can you check it?";
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision())],
+    [functionCall("submitReply", { ...VALID_REPLY, response: "I can't check 4111 1111 1111 1112 for you." })],
+  ]);
+  const { reply } = await respond(message, "default", options(model.create));
+  assert.equal(reply.response, "I can't check for you.");
+});

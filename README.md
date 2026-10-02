@@ -46,8 +46,27 @@ Escalation is settled before any Reply is drafted, and the responder can still e
 
    Its tools are the loaded skills' tools plus `loadSkill`, `escalate` and `submitReply`. `loadSkill` pulls in another skill's text and tools mid-turn. `escalate` returns the same template Reply as step 3. `updateWorkingMemory` is never exposed, so memory changes come back only in `workingMemoryUpdates`. Code sets `templateId` to null, and a submitted Reply never escalates.
 5. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), or the Pipeline Status has no module, the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
+6. **Validator.** Every Reply that isn't an Escalation goes through `src/validator.ts` before output, including a Reply from the baseline fallback. Escalations from the guards, triage or the `escalate` tool skip it, and it never changes `escalate`. See [Validator](#validator).
 
 The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `skills`, `baseline` or `drafting-failed`), the skills triage chose and any loaded mid-turn, every tool call with its arguments and result, and every model call tagged with its step. Trace files never hold card digits in this mode. Baseline mode still sends the raw text to the model, so its `userMessage` does.
+
+### Validator
+
+Some failures are cheap to catch in code, so every draft is checked against what this turn's tool results said. As tool results arrive, the responder collects their URLs, clinic slugs and text, and the pipeline adds any card digit runs from the Patient's raw message.
+
+Fixed in code right away:
+- A URL that no tool returned this turn and that isn't on the static allowlist is removed, along with its line. The allowlist is the Consultation link, the image-upload link, and `https://www.doctours.com/clinic/{slug}` for a slug a tool returned this turn.
+- Card digits from the Patient's message, and their last four, are removed.
+- URLs move to the last lines, one per line, in order of first mention. A URL inside a sentence becomes "the link below".
+- Markdown markers are stripped. URLs keep their underscores.
+- Field consistency: `templateId` is null, `escalationReason` is null when `escalate` is false, `followUpTiming` is null when `shouldFollowUp` is false, and an empty `attachmentUrls` is null.
+
+Checked, then repaired once:
+- Every amount next to "$" or "USD" appears as a number in this turn's tool results, or on the policy list (the $25 cancellation fee).
+- No banned phrases: assessment turnaround windows, stalling ("I'll get back to you"), handing off to "a coordinator" or "someone from our team", and head-covering advice. The list is `BANNED_PHRASES`, with the source rule next to each entry.
+- `attachmentUrls` has at most 3 entries, all returned by a tool.
+
+If a check fails, the responder gets one more turn. A user message lists the failures, and the next call must submit the Reply again. The version with fewer failures ships. If the repair doesn't come back as a valid Reply, the first version ships. Anything still failing ships anyway. The trace's `responder.validation` holds each run's fixes and check results, whether repair ran, and which version shipped.
 
 ### Skills
 

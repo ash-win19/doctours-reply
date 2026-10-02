@@ -143,3 +143,78 @@ test("a tool outside the loaded skills is refused, and working memory is never a
   assert.deepEqual(trace.toolCalls.map((call) => call.isError), [true, true]);
   for (const request of model.requests) assert.ok(!toolNames(request).includes("updateWorkingMemory"));
 });
+
+function inputItemsOf(request: ResponseCreateParamsNonStreaming): ResponseInputItem[] {
+  return request.input as ResponseInputItem[];
+}
+
+test("a fabricated payment link never ships, and the fix is traced", async () => {
+  const fabricated = { ...VALID_REPLY, response: "Pay the Silver deposit using the link below.\nhttps://www.doctours.com/payment/silver" };
+  const { result } = run(["decision-funnel"], [[functionCall("submitReply", fabricated)]]);
+  const { reply, trace } = await result;
+  assert.equal(reply.response, "Pay the Silver deposit using the link below.");
+  assert.deepEqual(trace.validation!.runs[0].fixes, ["removed https://www.doctours.com/payment/silver, which no tool returned, and its line"]);
+  assert.equal(trace.validation!.repairRan, false);
+});
+
+test("a link a tool returned this turn ships", async () => {
+  const url = "https://www.doctours.com/payment/44444444-4444-4444-8444-444444444441";
+  const { result } = run(
+    ["decision-funnel"],
+    [
+      [functionCall("getPaymentLinkTool", { type: "payment", clinicPackageId: "44444444-4444-4444-8444-444444444441" })],
+      [functionCall("submitReply", { ...VALID_REPLY, response: `Here's your Silver payment link.\n${url}` })],
+    ],
+  );
+  const { reply } = await result;
+  assert.equal(reply.response, `Here's your Silver payment link.\n${url}`);
+});
+
+test("a failing check gets one repair turn that lists the failures, and the repaired Reply ships", async () => {
+  const invented = { ...VALID_REPLY, response: "Silver is $2,999." };
+  const repaired = { ...VALID_REPLY, response: "Silver is $3,000." };
+  const { model, result } = run(
+    ["clinic-packages"],
+    [
+      [functionCall("getClinicPackagesTool", { clinicName: "Heva" })],
+      [functionCall("submitReply", invented)],
+      [functionCall("submitReply", repaired)],
+    ],
+  );
+  const { reply, trace } = await result;
+  assert.equal(reply.response, "Silver is $3,000.");
+  const repairTurn = inputItemsOf(model.requests[2]).at(-1) as { role: string; content: string };
+  assert.equal(repairTurn.role, "user");
+  assert.match(repairTurn.content, /\$2,999 isn't in this turn's tool results/);
+  assert.deepEqual(model.requests[2].tool_choice, { type: "function", name: "submitReply" });
+  assert.equal(trace.validation!.repairRan, true);
+  assert.equal(trace.validation!.shipped, "repaired");
+  assert.deepEqual(
+    trace.validation!.runs.map((run) => run.checks.filter((check) => !check.ok).map((check) => check.name)),
+    [["amounts"], []],
+  );
+});
+
+test("after the repair, the version with fewer failures ships, and there is never a second repair", async () => {
+  const oneFailure = { ...VALID_REPLY, response: "Silver is $2,999." };
+  const twoFailures = { ...VALID_REPLY, response: "Silver is $2,999. I'll get back to you on Gold." };
+  const { model, result } = run([], [[functionCall("submitReply", oneFailure)], [functionCall("submitReply", twoFailures)]]);
+  const { reply, trace } = await result;
+  assert.equal(reply.response, "Silver is $2,999.");
+  assert.equal(trace.validation!.shipped, "first");
+  assert.equal(model.requests.length, 2);
+});
+
+test("a repair that doesn't come back as a valid Reply ships the first version", async () => {
+  const invented = { ...VALID_REPLY, response: "Silver is $2,999." };
+  const { result } = run([], [[functionCall("submitReply", invented)], [functionCall("submitReply", { response: 42 })]]);
+  const { reply } = await result;
+  assert.equal(reply.response, "Silver is $2,999.");
+});
+
+test("an Escalation from the escalate tool skips the validator", async () => {
+  const { result } = run(["payments"], [[functionCall("escalate", { reason: "Refund", cannotDo: "refund a payment" })]]);
+  const { reply, trace } = await result;
+  assert.equal(reply.response, "I can't refund a payment. I'm getting a person for you.");
+  assert.deepEqual(trace.validation!.runs, []);
+});
