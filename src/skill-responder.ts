@@ -9,7 +9,7 @@ import {
   type CoreContext,
 } from "./prompt.ts";
 import type { Reply } from "./reply.ts";
-import { statusModule, type Skill, type SkillRegistry } from "./skills.ts";
+import type { Skill, SkillRegistry } from "./skills.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
 import { runTool, toolDefinition, toolsNamed } from "./tools.ts";
 
@@ -26,7 +26,7 @@ const EscalateInput = z.object({ reason: z.string(), cannotDo: z.string().nullab
 
 const escalateTool = toolDefinition(
   ESCALATE,
-  "Hand the conversation to a person when the patient asks for something only a person can do. Ends the turn.",
+  "Escalate to an Operator, who takes over the conversation, when the patient asks for something only a person can do. Ends the turn.",
   EscalateInput,
 );
 
@@ -35,12 +35,14 @@ export interface SkillResponderInput {
   // Skill ids triage chose. All must be in the registry.
   chosen: string[];
   patient: CoreContext;
+  // The module for the Patient's Pipeline Status, which code picks.
+  status: string | null;
 }
 
 // Writes the Reply from the core, the Pipeline Status module and the chosen skills, with only those skills' tools.
 export async function respondWithSkills(
   message: string,
-  { registry, chosen, patient }: SkillResponderInput,
+  { registry, chosen, patient, status }: SkillResponderInput,
   options: ModelOptions,
 ): Promise<{ reply: Reply; trace: SkillResponderTrace }> {
   const loaded: Skill[] = registry.resolve(chosen);
@@ -48,7 +50,7 @@ export async function respondWithSkills(
   const trace: SkillResponderTrace = {
     system: buildResponderSystemPrompt({
       core: buildCorePrompt(patient, registry.index()),
-      status: statusModule(patient.PIPELINE_STATUS),
+      status,
       skills: loaded,
     }),
     userMessage: buildResponderUserMessage(message, patient),
@@ -95,7 +97,7 @@ export async function respondWithSkills(
         trace,
         tools: () => [...toolsNamed(allowedTools()), loadSkillTool, escalateTool],
         callTool,
-        // Only the escalate tool can hand over, so a submitted Reply never escalates.
+        // Only the escalate tool escalates, so a submitted Reply never does.
         onSubmit: (submitted) => ({ ...submitted, templateId: null, escalate: false, escalationReason: null }),
       },
       options,

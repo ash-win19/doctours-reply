@@ -15,7 +15,7 @@ import {
   type Trace,
 } from "./model-calls.ts";
 import { ReplySchema, type Reply } from "./reply.ts";
-import { toolDefinition } from "./tools.ts";
+import { toolDefinition, type ToolRun } from "./tools.ts";
 
 export const MAX_TOOL_ROUNDS = 8;
 // Two forced submitReply calls after the tool rounds, in case the first one fails to parse.
@@ -30,7 +30,7 @@ export interface ResponderTrace extends Trace {
 }
 
 // What one tool call did: an output to send back to the model, or a finished Reply that ends the turn.
-export type ToolOutcome = { isError: boolean; output: unknown } | { reply: Reply };
+export type ToolOutcome = ToolRun | { reply: Reply };
 
 export interface ToolLoop {
   trace: ResponderTrace;
@@ -88,7 +88,7 @@ export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOption
       } else {
         const args = parseArguments(functionCall.arguments);
         const outcome: ToolOutcome = args.ok ? loop.callTool(name, args.value) : { isError: true, output: args.error };
-        const traced = "reply" in outcome ? { isError: false, output: "Escalated" } : outcome;
+        const traced = "reply" in outcome ? { isError: false, output: outcome.reply } : outcome;
         trace.toolCalls.push({ name, input: args.ok ? args.value : functionCall.arguments, ...traced });
         if ("reply" in outcome) return outcome.reply;
         output = typeof outcome.output === "string" ? outcome.output : JSON.stringify(outcome.output);

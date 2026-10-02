@@ -34,7 +34,7 @@ If a message can't be drafted, its Reply escalates ("I'm getting a person for yo
 
 ### default
 
-Escalation is settled before any Reply is drafted (ADR 0001, ADR 0002):
+Escalation is settled before any Reply is drafted, and the responder can still escalate mid-turn (ADR 0001, ADR 0002):
 
 1. **Guards, in code.** Card numbers (13 to 19 digits with optional spaces or dashes that pass the Luhn check) and phrases like "card ending in 4242" are replaced with "[card number]" before triage, a trace or any model sees the text. Card details or an explicit request for a person ("talk to a human", "real person", "someone call me") escalate with no model call.
 2. **Triage.** One `TRIAGE_MODEL` call reads the redacted message, a state card built from the Patient context, the last 4 chat turns and the escalation policy in `prompts/triage/`, and submits `{ escalate, escalationReason, cannotDo, skills, intent }`.
@@ -45,9 +45,9 @@ Escalation is settled before any Reply is drafted (ADR 0001, ADR 0002):
    - the skills triage chose (`prompts/skills/`), plus every skill they `requires`
 
    Its tools are the loaded skills' tools plus `loadSkill`, `escalate` and `submitReply`. `loadSkill` pulls in another skill's text and tools mid-turn. `escalate` returns the same template Reply as step 3. `updateWorkingMemory` is never exposed, so memory changes come back only in `workingMemoryUpdates`. Code sets `templateId` to null, and a submitted Reply never escalates.
-5. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), or the Pipeline Status has no module, the message goes to the baseline responder and the trace records `fallback: "baseline"` and why.
+5. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), or the Pipeline Status has no module, the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
 
-The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `skills`, `baseline` or `drafting-failed`), the skills triage chose and any loaded mid-turn, every tool call with its arguments and result, and every model call tagged with its step.
+The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `skills`, `baseline` or `drafting-failed`), the skills triage chose and any loaded mid-turn, every tool call with its arguments and result, and every model call tagged with its step. Trace files never hold card digits in this mode. Baseline mode still sends the raw text to the model, so its `userMessage` does.
 
 ### Skills
 
@@ -69,8 +69,8 @@ sources: [PRE_CLINICAL_SENT Steps 0 to 3, REVERSIBILITY, ...]
 | Skill | What it answers | Tools |
 |---|---|---|
 | `clinic-packages` | Package prices, Deposits, inclusions, hotel nights, bookable weekdays, doctors, Clinic status, afro specialty, a clinic's direct quote | `getAllClinicsTool`, `getClinicPackagesTool`, `getClinicDoctorsTool`, `getSavedClinicsTool` |
-| `decision-funnel` | Choosing a clinic and Package, booking from the assessment, Payment and Checkout links, tentative dates, what can change later. Requires `clinic-packages` | `getLatestAssessmentTool`, `getPatientContextTool`, `updateUserClinicPreferencesTool`, `getPaymentLinkTool` |
-| `payments` | Financing, Layaway, insurance, CareCredit and Cherry, Deposit and balance terms, a Deposit paid to a clinic, promos | `issuePromoCodeTool` | Trace files never hold card digits in this mode. Baseline mode still sends the raw text to the model, so its `userMessage` does.
+| `decision-funnel` | Choosing a clinic and Package, booking from the assessment, Payment and Checkout links, tentative dates, what can change later. Requires `clinic-packages` | `getLatestAssessmentTool`, `getPatientContextTool`, `updateUserClinicPreferencesTool`, `getPaymentLinkTool`, `issuePromoCodeTool` |
+| `payments` | Financing, Layaway, insurance, CareCredit and Cherry, Deposit and balance terms, a Deposit paid to a clinic, promos. Requires `clinic-packages` | `issuePromoCodeTool`, `getPaymentLinkTool` |
 
 ### baseline
 

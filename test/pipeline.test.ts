@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { respond, type PipelineTrace } from "../src/pipeline.ts";
 import { DraftingError, type CreateResponse } from "../src/model-calls.ts";
 import { SetupError } from "../src/errors.ts";
+import { loadSkillRegistry } from "../src/skills.ts";
 import { VALID_REPLY, firstUserText, functionCall, scriptedModel, triageDecision } from "./fakes.ts";
 
 const noModel: CreateResponse = async () => {
@@ -70,7 +71,7 @@ test("triage sees every skill's id and description", async () => {
   const model = scriptedModel([[functionCall("submitTriage", triageDecision({ escalate: true }))]]);
   await respond("What does Heva cost?", "default", options(model.create));
   const instructions = model.requests[0].instructions as string;
-  for (const id of ["clinic-packages", "decision-funnel", "payments"]) assert.match(instructions, new RegExp(`- ${id}: `));
+  for (const { id } of loadSkillRegistry().index()) assert.match(instructions, new RegExp(`- ${id}: `));
 });
 
 test("a message that doesn't escalate is answered with the skills triage chose", async () => {
@@ -112,8 +113,8 @@ test("a skill that doesn't exist yet sends the message to the baseline responder
   assert.match(model.requests[1].instructions as string, /^# IDENTITY\nYou are a patient concierge/);
   const pipelineTrace = trace as PipelineTrace;
   assert.equal(pipelineTrace.path, "baseline");
-  assert.equal(pipelineTrace.fallback, "baseline");
-  assert.match(pipelineTrace.fallbackReason!, /other/);
+  assert.equal(pipelineTrace.fallback?.to, "baseline");
+  assert.match(pipelineTrace.fallback!.reason, /other/);
 });
 
 test("tool calls sit at the top of the trace whichever responder ran", async () => {

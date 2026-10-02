@@ -1,8 +1,8 @@
 ---
 id: payments
 description: Money: Financing (Klarna, PayPal, monthly payments), Layaway, insurance, CareCredit or Cherry, card or cash, Deposit and balance terms, a Deposit paid to a clinic, discounts and promo codes.
-tools: [issuePromoCodeTool]
-requires: []
+tools: [issuePromoCodeTool, getPaymentLinkTool]
+requires: [clinic-packages]
 overrides: []
 sources: [FINANCING GEOGRAPHY, HEALTH INSURANCE, CARECREDIT / CHERRY, DEPOSIT ELIGIBILITY RULE, ACTIVE PROMO OFFER, OPERATIONAL KNOWLEDGE 6, CAPABILITIES & CONSTRAINTS discounts, BUSINESS POLICY GROUNDING financing and insurance and deposit examples]
 ---

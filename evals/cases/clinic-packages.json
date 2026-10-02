@@ -34,7 +34,7 @@
     }
   },
   {
-    "id": "cp-heva-tier-difference",
+    "id": "cp-heva-package-difference",
     "group": "clinic-packages",
     "rule": "Source, PACKAGE & CLINIC FACTS: exact attribution per package; WHAT MATTERS vs NICE TO HAVE.",
     "text": "What's the actual difference between Heva's Silver and Gold?",

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import type { SkillSummary } from "./prompt.ts";
 import { TOOL_NAMES } from "./tools.ts";
 
 const SKILLS_DIR = new URL("../prompts/skills/", import.meta.url);
@@ -61,7 +62,7 @@ export function parseSkill(raw: string, path: string): Skill {
 
 export interface SkillRegistry {
   // Each skill's id and description, for triage and for loadSkill.
-  index(): { id: string; description: string }[];
+  index(): SkillSummary[];
   has(id: string): boolean;
   // The named skills plus everything they require, dependencies first, each once.
   resolve(ids: string[]): Skill[];

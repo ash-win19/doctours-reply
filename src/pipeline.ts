@@ -41,18 +41,11 @@ export interface PipelineTrace extends Trace {
   guards: { cardNumberFound: boolean; humanRequested: boolean };
   triage: StepTrace<TriageTrace> | null;
   responder: StepTrace<ResponderTrace | SkillResponderTrace> | null;
-  fallback: "baseline" | null;
-  fallbackReason: string | null;
+  // Set when the skill-based responder couldn't take the message, so the baseline responder answered.
+  fallback: { to: "baseline"; reason: string } | null;
 }
 
 const TRIAGE_TURNS = 4;
-
-let registry: SkillRegistry | null = null;
-// Read once per run, the first time a message needs it.
-function skills(): SkillRegistry {
-  registry ??= loadSkillRegistry();
-  return registry;
-}
 
 function detachCalls<T extends Trace>({ modelCalls, toolCalls, ...rest }: T, into: PipelineTrace): StepTrace<T> {
   into.modelCalls.push(...modelCalls);
@@ -61,10 +54,10 @@ function detachCalls<T extends Trace>({ modelCalls, toolCalls, ...rest }: T, int
 }
 
 // Why the skill-based responder can't take this message yet, or null when it can.
-function fallbackReason(chosen: string[], pipelineStatus: string): string | null {
-  const missing = chosen.filter((id) => !skills().has(id));
+function fallbackReason(registry: SkillRegistry, chosen: string[], status: string | null, pipelineStatus: string): string | null {
+  const missing = chosen.filter((id) => !registry.has(id));
   if (missing.length > 0) return `No skill named ${missing.join(", ")}`;
-  if (statusModule(pipelineStatus) === null) return `No module for Pipeline Status ${pipelineStatus}`;
+  if (status === null) return `No module for Pipeline Status ${pipelineStatus}`;
   return null;
 }
 
@@ -83,7 +76,6 @@ export async function respond(
     triage: null,
     responder: null,
     fallback: null,
-    fallbackReason: null,
     modelCalls: [],
     toolCalls: [],
   };
@@ -93,13 +85,14 @@ export async function respond(
   }
 
   let step: Step = "triage";
+  const registry = loadSkillRegistry();
   try {
     const { decision, trace: triageTrace } = await triage(
       {
         message: screening.redactedText,
         stateCard: buildStateCard(context),
         recentTurns: recentTurns(context, TRIAGE_TURNS),
-        skillIndex: skills().index(),
+        skillIndex: registry.index(),
       },
       { create: options.create, model: options.triageModel },
     );
@@ -110,12 +103,12 @@ export async function respond(
     }
 
     step = "responder";
-    const reason = fallbackReason(decision.skills, context.PIPELINE_STATUS);
+    const status = statusModule(context.PIPELINE_STATUS);
+    const reason = fallbackReason(registry, decision.skills, status, context.PIPELINE_STATUS);
     if (reason) {
       // A message that needs a skill that doesn't exist yet still gets the original prompt's full rules.
       trace.path = "baseline";
-      trace.fallback = "baseline";
-      trace.fallbackReason = reason;
+      trace.fallback = { to: "baseline", reason };
       const { reply, trace: responderTrace } = await respondBaseline(screening.redactedText, responderOptions);
       trace.responder = detachCalls(responderTrace, trace);
       return { reply, trace };
@@ -123,7 +116,7 @@ export async function respond(
     trace.path = "skills";
     const { reply, trace: responderTrace } = await respondWithSkills(
       screening.redactedText,
-      { registry: skills(), chosen: decision.skills, patient: context },
+      { registry, chosen: decision.skills, patient: context, status },
       responderOptions,
     );
     trace.responder = detachCalls(responderTrace, trace);

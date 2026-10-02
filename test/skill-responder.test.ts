@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
 import { respondWithSkills } from "../src/skill-responder.ts";
-import { loadSkillRegistry } from "../src/skills.ts";
+import { loadSkillRegistry, statusModule } from "../src/skills.ts";
 import { escalationReply } from "../src/escalation.ts";
 import * as context from "../src/context.ts";
 import { VALID_REPLY, firstUserText, functionCall, scriptedModel, toolNames, type FakeFunctionCall } from "./fakes.ts";
@@ -12,7 +12,8 @@ const HEVA = "11111111-1111-4111-8111-111111111111";
 
 function run(chosen: string[], turns: FakeFunctionCall[][], message = "I'm leaning toward Heva") {
   const model = scriptedModel(turns);
-  const result = respondWithSkills(message, { registry, chosen, patient: context }, { create: model.create, model: "responder-model" });
+  const status = statusModule(context.PIPELINE_STATUS);
+  const result = respondWithSkills(message, { registry, chosen, patient: context, status }, { create: model.create, model: "responder-model" });
   return { model, result };
 }
 
@@ -47,6 +48,7 @@ test("the responder sees only the loaded skills' tools, plus loadSkill, escalate
     "getPatientContextTool",
     "getPaymentLinkTool",
     "getSavedClinicsTool",
+    "issuePromoCodeTool",
     "loadSkill",
     "submitReply",
     "updateUserClinicPreferencesTool",
@@ -128,7 +130,7 @@ test("write tools run and are traced with their arguments and results", async ()
 
 test("a tool outside the loaded skills is refused, and working memory is never a tool", async () => {
   const { model, result } = run(
-    ["payments"],
+    ["clinic-packages"],
     [
       [functionCall("getPatientImagesTool", {})],
       [functionCall("updateWorkingMemory", { memory: {} })],
