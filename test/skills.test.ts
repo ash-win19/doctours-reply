@@ -86,7 +86,40 @@ test("the shipped skills load, and decision-funnel brings clinic-packages", () =
   }
 });
 
-test("the Pipeline Status module is picked by status, and only exists for statuses that have one", () => {
-  assert.match(statusModule("PRE_CLINICAL_SENT")!, /^# PIPELINE STATUS: PRE_CLINICAL_SENT/);
-  assert.equal(statusModule("NOT_A_STATUS"), null);
+test("code picks the Pipeline Status module for every pre-deposit status", () => {
+  for (const status of ["LEAD", "PREP_PRE_CLINICAL", "PRE_CLINICAL_SENT", "MEETING_MISSED", "WAITING"]) {
+    assert.match(statusModule(status), new RegExp(`^# PIPELINE STATUS: ${status}\\b`), status);
+  }
+  assert.match(statusModule("MEETING_BOOKED"), /^# PIPELINE STATUS: MEETING_BOOKED \/ MEETING_COMPLETED/);
+  assert.equal(statusModule("MEETING_COMPLETED"), statusModule("MEETING_BOOKED"));
+});
+
+test("an unknown Pipeline Status gets a short module that answers reactively", () => {
+  assert.match(statusModule("SOMETHING_NEW"), /answer reactively/);
+  assert.equal(statusModule("../core"), statusModule("SOMETHING_NEW"));
+});
+
+test("the statuses before the assessment is sent carry the pricing length cap", () => {
+  for (const status of ["LEAD", "PREP_PRE_CLINICAL", "MEETING_BOOKED"]) {
+    assert.match(statusModule(status), /PRE-ASSESSMENT CLINIC AND PRICING ANSWERS \(LENGTH CAP/, status);
+  }
+  assert.doesNotMatch(statusModule("PRE_CLINICAL_SENT"), /LENGTH CAP/);
+});
+
+test("intake-photos holds the intake rules and only the photo and name tools", () => {
+  const [skill] = loadSkillRegistry().resolve(["intake-photos"]);
+  assert.deepEqual(skill.tools, ["getPatientImagesTool", "updateUserTool"]);
+  for (const section of [
+    "# COLLECTION PERSISTENCE",
+    "# INFORMATION COLLECTION",
+    "# IMAGE GUIDANCE",
+    "# IMAGE DELAY HANDLING",
+    "# CONCERN REFLECTION",
+    "# FIRST-CONTACT INTRODUCTION",
+    "# INSTANT FORM AREA CONFIRMATION",
+    "# DATA COLLECTION",
+  ]) {
+    assert.ok(skill.text.includes(section), section);
+  }
+  assert.match(skill.text, /never list more than 3 URLs/);
 });

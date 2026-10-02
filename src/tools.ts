@@ -121,18 +121,32 @@ export const TOOLS: FunctionTool[] = Object.entries(SPECS).map(([name, toolSpec]
 
 export const TOOL_NAMES = Object.keys(SPECS);
 
+// The packet function behind a tool: getPatientImagesTool runs getPatientImages.
+export function packetFunctionName(toolName: string): string {
+  return toolName.replace(/Tool$/, "");
+}
+
+export const PACKET_FUNCTION_NAMES = TOOL_NAMES.map(packetFunctionName);
+
 export function toolsNamed(names: string[]): FunctionTool[] {
   return TOOLS.filter((tool) => names.includes(tool.name));
 }
 
 export type ToolRun = { isError: false; output: unknown } | { isError: true; output: string };
 
-export function runTool(name: string, input: unknown): ToolRun {
+// The part of a Patient context that tools read: fixed results keyed by packet function name.
+export interface ToolContext {
+  toolOverrides?: Partial<Record<string, unknown>>;
+}
+
+export function runTool(name: string, input: unknown, context: ToolContext = {}): ToolRun {
   const toolSpec = SPECS[name];
   if (!toolSpec) return { isError: true, output: `Unknown tool: ${name}` };
   const parsed = toolSpec.input.safeParse(input);
   if (!parsed.success) {
     return { isError: true, output: `Invalid input for ${name}: ${z.prettifyError(parsed.error)}` };
   }
+  const override = context.toolOverrides?.[packetFunctionName(name)];
+  if (override !== undefined) return { isError: false, output: override };
   return { isError: false, output: toolSpec.run(parsed.data) ?? null };
 }

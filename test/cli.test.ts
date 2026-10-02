@@ -8,11 +8,17 @@ test("reads mode, out and the input file", () => {
     mode: "baseline",
     out: "replies.json",
     inputPath: "messages.json",
+    contextPath: undefined,
   });
 });
 
 test("no file argument means stdin", () => {
-  assert.deepEqual(parseCliArgs(["--mode", "baseline"]), { mode: "baseline", out: undefined, inputPath: undefined });
+  assert.deepEqual(parseCliArgs(["--mode", "baseline"]), {
+    mode: "baseline",
+    out: undefined,
+    inputPath: undefined,
+    contextPath: undefined,
+  });
 });
 
 test("rejects an unknown mode", () => {
@@ -41,4 +47,18 @@ test("bad input exits non-zero with nothing on stdout", () => {
   assert.equal(result.status, 1);
   assert.equal(result.stdout, "");
   assert.match(result.stderr, /JSON/);
+});
+
+test("--context names a Patient context file", () => {
+  assert.equal(parseCliArgs(["--context", "evals/contexts/lead.json"]).contextPath, "evals/contexts/lead.json");
+});
+
+test("a bad context file exits non-zero with nothing on stdout", () => {
+  const result = spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "--context", "evals/contexts/missing.json"], {
+    input: '[{"id":"a","text":"hi"}]',
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /missing\.json/);
 });

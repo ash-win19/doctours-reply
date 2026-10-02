@@ -6,8 +6,8 @@ import {
   buildResponderSystemPrompt,
   buildResponderUserMessage,
   formatSkill,
-  type CoreContext,
 } from "./prompt.ts";
+import type { PatientContext } from "./patient-context.ts";
 import type { Reply } from "./reply.ts";
 import type { Skill, SkillRegistry } from "./skills.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
@@ -34,9 +34,9 @@ export interface SkillResponderInput {
   registry: SkillRegistry;
   // Skill ids triage chose. All must be in the registry.
   chosen: string[];
-  patient: CoreContext;
+  patient: PatientContext;
   // The module for the Patient's Pipeline Status, which code picks.
-  status: string | null;
+  status: string;
 }
 
 // Writes the Reply from the core, the Pipeline Status module and the chosen skills, with only those skills' tools.
@@ -88,7 +88,7 @@ export async function respondWithSkills(
     if (!allowedTools().includes(name)) {
       return { isError: true, output: `${name} isn't available. Load the skill that has it with ${LOAD_SKILL}.` };
     }
-    return runTool(name, input);
+    return runTool(name, input, patient);
   }
 
   try {

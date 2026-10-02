@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import * as context from "./context.ts";
-import { buildStateCard, type StateCardContext } from "./state-card.ts";
+import { PACKET_CONTEXT, type PatientContext } from "./patient-context.ts";
+import { buildStateCard, collectionStatus, type StateCardContext } from "./state-card.ts";
 
 const PROMPTS_DIR = new URL("../prompts/", import.meta.url);
 
@@ -19,14 +19,16 @@ function fill(template: string, values: Record<string, unknown>): string {
 }
 
 // The packet's Flow: each {{NAME}} in the system prompt takes the constant of the same name.
-export function buildBaselineSystemPrompt(): string {
-  return fill(readPrompt("baseline/system.md"), context);
+export function buildBaselineSystemPrompt(context: PatientContext = PACKET_CONTEXT): string {
+  return fill(readPrompt("baseline/system.md"), { ...context, COLLECTION_STATUS: collectionStatus(context) });
 }
 
-export function buildBaselineUserMessage(humanMessage: string): string {
+export function buildBaselineUserMessage(humanMessage: string, context: PatientContext = PACKET_CONTEXT): string {
   return fill(readPrompt("baseline/user.md"), {
     HUMAN_MESSAGE: humanMessage,
     RECENT_CONVERSATION_SUMMARY: context.RECENT_CONVERSATION_SUMMARY,
+    CHAT_KIND: context.CHAT_KIND,
+    SENDER_DISPLAY_NAME: context.SENDER_DISPLAY_NAME,
   });
 }
 
@@ -72,7 +74,7 @@ export function buildCorePrompt(patient: CoreContext, skillIndex: SkillSummary[]
     CLINIC_FLAGS: patient.CLINIC_FLAGS,
     RECENT_CALLS: patient.RECENT_CALLS,
     WORKING_MEMORY: patient.WORKING_MEMORY,
-    CHAT_LIST: patient.CHAT_LIST,
+    CHAT_LIST: patient.CHAT_LIST || "No messages yet.",
   });
 }
 

@@ -17,6 +17,7 @@ npm run respond -- messages.json > replies.json
 - Input is a JSON array of `{id, text}` messages, read from the file argument or from stdin when there is no file.
 - Output is a JSON array of `Reply` objects, one per message, in input order. It goes to stdout, or to `--out <file>`.
 - stdout holds only that JSON array. Progress and errors go to stderr.
+- `--context <file>` swaps in another Patient. See [Patient context](#patient-context).
 - Up to 4 messages run at once.
 - Each message writes a trace to `traces/<runId>/<messageId>.json`. A trace holds the input, the filled prompts, every tool call and result, the final model output, and tokens (including cached and reasoning tokens) and latency for each model call.
 
@@ -27,6 +28,24 @@ Rate limits (429), server errors and network errors are retried by the OpenAI SD
 The run ID is the run's start time as an ISO timestamp, with `:` swapped for `-` so it works as a directory name.
 
 If a message can't be drafted, its Reply escalates ("I'm getting a person for you.", with `escalationReason` "Could not draft a reply"), so every message still gets exactly one Reply. Setup problems such as a missing or rejected key or an unknown model stop the whole run with a non-zero exit instead.
+
+## Patient context
+
+Every Reply is written for one Patient. By default that is the packet's Patient, whose constants are in `src/context.ts`. `--context <file>` swaps in another one:
+
+```sh
+npm run respond -- --context evals/contexts/lead.json messages.json
+```
+
+A context file is a JSON object with any of the packet constants' keys, such as `PIPELINE_STATUS`, `PATIENT_NAME`, `RECENT_MEDIA_CONVERSATION` or `CHAT_LIST`. `src/patient-context.ts` validates it against a schema of every key. A misspelled key or a wrong type stops the run. Any key the file leaves out takes the packet's value, with one exception: `COLLECTION_STATUS` describes the packet Patient, so when a file omits it, Intake item status is worked out from the name, procedure area, photos and the ask counts in `WORKING_MEMORY`.
+
+`toolOverrides` fixes what a tool returns for this Patient. Its keys are the packet functions in `src/packet-tools.ts`, such as `getPatientImages`, not the `...Tool` names the model sees. Each value is returned as is, instead of running that function, once the call's input has passed validation:
+
+```json
+{ "PIPELINE_STATUS": "LEAD", "toolOverrides": { "getPatientImages": { "hasImages": false, "imageCount": 0 } } }
+```
+
+`evals/contexts/lead.json` is a brand-new LEAD Patient: no name, no procedure area, no photos and no chat history, with overrides so the tools agree.
 
 ## Modes
 
@@ -41,11 +60,11 @@ Escalation is settled before any Reply is drafted, and the responder can still e
 3. **Escalation.** Code renders the Reply from the ADR 0002 template: "I can't {cannotDo}. I'm getting a person for you.", or "I'm getting a person for you." with no `cannotDo`. A `cannotDo` holding digits is dropped. The Reply sets `escalationReason`, `intent` "escalate to a person" and `workingMemoryUpdates.escalationFlags`.
 4. **Skills.** Everything else is answered by a responder that sees only three things, in this order:
    - the core (`prompts/core.md`): identity and single voice, plain-text SMS, answer then stop, reply sizing, no stalling, grounding, link placement and the static URL allowlist, rule precedence, the state card, working memory and the chat history
-   - the module for the Patient's Pipeline Status (`prompts/status/`), which code picks and triage never does
+   - the module for the Patient's Pipeline Status (`prompts/status/`), which code picks and triage never does. There is one for each of LEAD, PREP_PRE_CLINICAL, PRE_CLINICAL_SENT, MEETING_BOOKED and MEETING_COMPLETED (one shared module, as in the source), MEETING_MISSED and WAITING. Any other status gets a short module that says to answer reactively
    - the skills triage chose (`prompts/skills/`), plus every skill they `requires`
 
    Its tools are the loaded skills' tools plus `loadSkill`, `escalate` and `submitReply`. `loadSkill` pulls in another skill's text and tools mid-turn. `escalate` returns the same template Reply as step 3. `updateWorkingMemory` is never exposed, so memory changes come back only in `workingMemoryUpdates`. Code sets `templateId` to null, and a submitted Reply never escalates.
-5. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), or the Pipeline Status has no module, the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
+5. **Fallback.** If triage names a skill that doesn't exist yet (it says `other` for a topic no skill covers), the message goes to the baseline responder and the trace records `fallback: { to: "baseline", reason }`.
 
 The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `skills`, `baseline` or `drafting-failed`), the skills triage chose and any loaded mid-turn, every tool call with its arguments and result, and every model call tagged with its step. Trace files never hold card digits in this mode. Baseline mode still sends the raw text to the model, so its `userMessage` does.
 
@@ -71,6 +90,7 @@ sources: [PRE_CLINICAL_SENT Steps 0 to 3, REVERSIBILITY, ...]
 | `clinic-packages` | Package prices, Deposits, inclusions, hotel nights, bookable weekdays, doctors, Clinic status, afro specialty, a clinic's direct quote | `getAllClinicsTool`, `getClinicPackagesTool`, `getClinicDoctorsTool`, `getSavedClinicsTool` |
 | `decision-funnel` | Choosing a clinic and Package, booking from the assessment, Payment and Checkout links, tentative dates, what can change later. Requires `clinic-packages` | `getLatestAssessmentTool`, `getPatientContextTool`, `updateUserClinicPreferencesTool`, `getPaymentLinkTool`, `issuePromoCodeTool` |
 | `payments` | Financing, Layaway, insurance, CareCredit and Cherry, Deposit and balance terms, a Deposit paid to a clinic, promos. Requires `clinic-packages` | `issuePromoCodeTool`, `getPaymentLinkTool` |
+| `intake-photos` | Collecting procedure area, name and intake photos: the first-contact introduction, the one collection ask, uploads and "done", photo delays, a Patient's own photos (at most 3 attached) | `getPatientImagesTool`, `updateUserTool` |
 
 ### baseline
 
@@ -108,9 +128,11 @@ A case is one Patient message plus deterministic checks:
 }
 ```
 
+A case can also name a Patient context file with `"context": "evals/contexts/lead.json"`, and its message then runs as that Patient. Without one it runs as the packet's Patient.
+
 `group` is the skill the case exercises, or `escalation`. `rule` cites the source rule it tests. The checks are `escalate` (exact match), `calls` (each listed tool ran without error, with arguments containing each `argsInclude` text), `includes` and `excludes` (substrings, ignoring case; an `includes` entry can be a list of alternatives, any one of which is enough), `lastLineUrl` (the Reply's last line is exactly that URL), `noUrl`, `maxSentences` (split on `.`, `?` and `!` after removing URLs) and `maxAttachments`. Numbers match however they're written, as whole numbers: `"$3,000"` matches "3000 USD" but `"$500"` doesn't match inside "$4,500". Every case also checks that the Reply matches the schema with a null `templateId`. An unknown check name is rejected, so a typo can't pass silently.
 
-`evals/cases/clinic-packages.json`, `decision-funnel.json` and `payments.json` hold 16 cases for the first three skills, each citing the source section it tests.
+`evals/cases/clinic-packages.json`, `decision-funnel.json` and `payments.json` hold 16 cases for the first three skills, each citing the source section it tests. `evals/cases/intake-photos.json` runs six cases as the LEAD Patient (the first-contact introduction, the area ask, the photo ask with "send done", a hair-state delay, "done" when no photos were saved, and a shared name) and one as the packet Patient asking to see their photos.
 
 `evals/cases/escalation.json` covers both sides of every line in ADR 0002: 11 messages that must escalate, including paraphrases triage has to catch, and 7 that must be answered.
 

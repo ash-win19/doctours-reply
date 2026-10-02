@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
 import { runMessages, MAX_CONCURRENCY } from "../src/runner.ts";
 import { SetupError } from "../src/errors.ts";
+import { loadContext } from "../src/patient-context.ts";
 import { ReplySchema } from "../src/reply.ts";
 import type { CreateResponse } from "../src/model-calls.ts";
 import { VALID_REPLY, modelResponse, functionCall, firstUserText, toolNames, triageDecision } from "./fakes.ts";
@@ -170,4 +171,19 @@ test("card numbers never reach a trace file", async () => {
   const raw = readFileSync(join(deps.traceRoot, runId, "card.json"), "utf8");
   assert.doesNotMatch(raw, /4111/);
   assert.equal(JSON.parse(raw).input.text, "Put it on [card number] please");
+});
+
+test("each message can carry its own Patient context", async () => {
+  const deps = setup();
+  const lead = loadContext("evals/contexts/lead.json");
+  const messages = [
+    { id: "packet", text: "What does Heva cost?" },
+    { id: "lead", text: "What does Heva cost?", context: lead },
+  ];
+  const { results } = await runMessages(messages, "default", { ...deps, create: passThroughModel, responderModel: "fake" });
+  assert.deepEqual(results[1].input, { id: "lead", text: "What does Heva cost?" });
+  const [runId] = readdirSync(deps.traceRoot);
+  const triageCard = (id: string) => JSON.parse(readFileSync(join(deps.traceRoot, runId, `${id}.json`), "utf8")).triage.userMessage;
+  assert.match(triageCard("packet"), /Pipeline Status: PRE_CLINICAL_SENT/);
+  assert.match(triageCard("lead"), /Pipeline Status: LEAD/);
 });

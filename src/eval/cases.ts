@@ -2,6 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { ToolCallTrace } from "../model-calls.ts";
+import { loadContext, type PatientContext } from "../patient-context.ts";
+import type { RunMessage } from "../runner.ts";
 import type { Reply } from "../reply.ts";
 import {
   checkCalls,
@@ -43,8 +45,8 @@ const EvalCaseSchema = z
     // The source rule the case tests, such as a packet section or an ADR.
     rule: z.string().min(1),
     text: z.string(),
-    // Patient context overrides. The runner can't swap context in yet, so a case that sets it is rejected.
-    context: z.never({ error: "context is not supported until the runner can swap Patient context" }).optional(),
+    // A Patient context file, such as evals/contexts/lead.json. Without one the case runs as the packet's Patient.
+    context: z.string().min(1).optional(),
     expect: ExpectSchema,
   })
   .strict();
@@ -89,6 +91,15 @@ export function loadCases(names: string[] = []): EvalCase[] {
   const fileNames = (names.length > 0 ? names : available).map((name) => `${name}.json`);
   if (fileNames.length === 0) throw new Error(`No case files found in ${CASES_DIR}`);
   return loadCaseFiles(fileNames.map((file) => ({ path: file, raw: readFileSync(join(CASES_DIR, file), "utf8") })));
+}
+
+// Each case's message with the Patient context it names. Each context file is read once.
+export function caseMessages(cases: EvalCase[]): RunMessage[] {
+  const contexts = new Map<string | undefined, PatientContext>();
+  return cases.map(({ id, text, context: path }) => {
+    if (!contexts.has(path)) contexts.set(path, loadContext(path));
+    return { id, text, context: contexts.get(path) };
+  });
 }
 
 export interface CaseOutcome {

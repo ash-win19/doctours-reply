@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import type { SkillSummary } from "./prompt.ts";
 import { TOOL_NAMES } from "./tools.ts";
@@ -107,9 +107,21 @@ function dirUrl(dir: string | URL): URL {
   return dir instanceof URL ? dir : pathToFileURL(dir.endsWith("/") ? dir : `${dir}/`);
 }
 
+// The module file for each Pipeline Status. The source prompt gives MEETING_BOOKED and MEETING_COMPLETED one section.
+const STATUS_MODULES: Record<string, string> = {
+  LEAD: "LEAD",
+  PREP_PRE_CLINICAL: "PREP_PRE_CLINICAL",
+  PRE_CLINICAL_SENT: "PRE_CLINICAL_SENT",
+  MEETING_BOOKED: "MEETING_BOOKED_OR_COMPLETED",
+  MEETING_COMPLETED: "MEETING_BOOKED_OR_COMPLETED",
+  MEETING_MISSED: "MEETING_MISSED",
+  WAITING: "WAITING",
+};
+// A status with no section of its own is answered reactively.
+const UNKNOWN_STATUS_MODULE = "UNKNOWN";
+
 // The module for the Patient's Pipeline Status. Code picks it, never triage.
-export function statusModule(pipelineStatus: string): string | null {
-  const url = new URL(`${pipelineStatus}.md`, STATUS_DIR);
-  if (!/^[A-Z_]+$/.test(pipelineStatus) || !existsSync(url)) return null;
-  return readFileSync(url, "utf8").trim();
+export function statusModule(pipelineStatus: string): string {
+  const file = Object.hasOwn(STATUS_MODULES, pipelineStatus) ? STATUS_MODULES[pipelineStatus] : UNKNOWN_STATUS_MODULE;
+  return readFileSync(new URL(`${file}.md`, STATUS_DIR), "utf8").trim();
 }

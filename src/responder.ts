@@ -1,4 +1,5 @@
 import { asDraftingError, type ModelOptions } from "./model-calls.ts";
+import { PACKET_CONTEXT, type PatientContext } from "./patient-context.ts";
 import { buildBaselineSystemPrompt, buildBaselineUserMessage } from "./prompt.ts";
 import type { Reply } from "./reply.ts";
 import { runToolLoop, type ResponderTrace } from "./tool-loop.ts";
@@ -8,13 +9,19 @@ import { TOOLS, runTool } from "./tools.ts";
 export async function respondBaseline(
   humanMessage: string,
   options: ModelOptions,
+  context: PatientContext = PACKET_CONTEXT,
 ): Promise<{ reply: Reply; trace: ResponderTrace }> {
-  const system = buildBaselineSystemPrompt();
-  const userMessage = buildBaselineUserMessage(humanMessage);
+  const system = buildBaselineSystemPrompt(context);
+  const userMessage = buildBaselineUserMessage(humanMessage, context);
   const trace: ResponderTrace = { system, userMessage, modelCalls: [], toolCalls: [], finalOutput: null };
   try {
     const reply = await runToolLoop(
-      { trace, tools: () => TOOLS, callTool: runTool, onSubmit: (submitted) => ({ ...submitted, templateId: null }) },
+      {
+        trace,
+        tools: () => TOOLS,
+        callTool: (name, input) => runTool(name, input, context),
+        onSubmit: (submitted) => ({ ...submitted, templateId: null }),
+      },
       options,
     );
     return { reply, trace };

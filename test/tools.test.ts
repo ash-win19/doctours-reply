@@ -52,3 +52,15 @@ test("unknown tool is an error result", () => {
   const result = runTool("getTripDetailsTool", {});
   assert.equal(result.isError, true);
 });
+
+test("a context's tool override replaces the packet function's result", () => {
+  const context = { toolOverrides: { getPatientImages: { hasImages: false, imageCount: 0 } } };
+  assert.deepEqual(runTool("getPatientImagesTool", {}, context), { isError: false, output: { hasImages: false, imageCount: 0 } });
+  const packages = runTool("getClinicPackagesTool", { clinicName: "Heva" }, context);
+  assert.equal((packages.output as { clinicName: string }).clinicName, "Heva Clinic");
+});
+
+test("an overridden tool still rejects bad input", () => {
+  const context = { toolOverrides: { getClinicDoctors: { doctors: [] } } };
+  assert.equal(runTool("getClinicDoctorsTool", { clinicId: 42 }, context).isError, true);
+});

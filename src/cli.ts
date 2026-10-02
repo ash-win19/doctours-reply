@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defaultRunnerDeps, log } from "./deps.ts";
+import { loadContext } from "./patient-context.ts";
 import { parseMode, type Mode } from "./pipeline.ts";
 import { runMessages, type HumanMessage } from "./runner.ts";
 
@@ -12,19 +13,21 @@ export interface CliArgs {
   mode: Mode;
   out: string | undefined;
   inputPath: string | undefined;
+  // A Patient context file to use instead of the packet's constants.
+  contextPath: string | undefined;
 }
 
 export function parseCliArgs(argv: string[]): CliArgs {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: { mode: { type: "string" }, out: { type: "string" } },
+    options: { mode: { type: "string" }, out: { type: "string" }, context: { type: "string" } },
     allowPositionals: true,
   });
   const mode = parseMode(values.mode);
   if (positionals.length > 1) {
     throw new Error("Pass at most one input file");
   }
-  return { mode, out: values.out, inputPath: positionals[0] };
+  return { mode, out: values.out, inputPath: positionals[0], contextPath: values.context };
 }
 
 export function parseMessages(raw: string): HumanMessage[] {
@@ -43,12 +46,17 @@ export function parseMessages(raw: string): HumanMessage[] {
 
 async function main(): Promise<void> {
   const args = parseCliArgs(process.argv.slice(2));
+  const context = loadContext(args.contextPath);
   if (!args.inputPath && process.stdin.isTTY) {
     throw new Error("Pass a messages file or pipe the messages into stdin");
   }
   const raw = args.inputPath ? readFileSync(args.inputPath, "utf8") : readFileSync(process.stdin.fd, "utf8");
   const messages = parseMessages(raw);
-  const { results } = await runMessages(messages, args.mode, defaultRunnerDeps());
+  const { results } = await runMessages(
+    messages.map((message) => ({ ...message, context })),
+    args.mode,
+    defaultRunnerDeps(),
+  );
   const replies = results.map((result) => result.reply);
   const output = `${JSON.stringify(replies, null, 2)}\n`;
   if (args.out) {

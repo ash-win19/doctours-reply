@@ -8,6 +8,7 @@ import {
   buildResponderUserMessage,
 } from "../src/prompt.ts";
 import { buildStateCard } from "../src/state-card.ts";
+import { loadContext } from "../src/patient-context.ts";
 import { loadSkillRegistry } from "../src/skills.ts";
 import * as context from "../src/context.ts";
 
@@ -77,4 +78,22 @@ test("the responder's system prompt is the core, then the Pipeline Status module
 test("the responder's user message carries the incoming message", () => {
   const message = buildResponderUserMessage("What does Heva cost?", context);
   assert.equal(message, 'Incoming thread message:\n"What does Heva cost?"\nIncoming image count: 0\nTriggering sender: Jordan Hale');
+});
+
+const lead = loadContext("evals/contexts/lead.json");
+
+test("the baseline prompts fill from a swapped context", () => {
+  const system = buildBaselineSystemPrompt(lead);
+  assert.ok(system.includes(lead.PATIENT_SUMMARY));
+  assert.ok(system.includes("Collection Status: area MISSING; name MISSING; photos MISSING."));
+  assert.doesNotMatch(system, /Collection Status: null/);
+  const user = buildBaselineUserMessage("hi", lead);
+  assert.match(user, /Triggering sender: \+15555550199\n/);
+  assert.doesNotMatch(user, /Jordan/);
+});
+
+test("the core prompt fills from a swapped context, and an empty chat says so", () => {
+  const core = buildCorePrompt(lead, []);
+  assert.match(core, /Pipeline Status: LEAD/);
+  assert.match(core, /## Recent conversation\nNo messages yet\./);
 });

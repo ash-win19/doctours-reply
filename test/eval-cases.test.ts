@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { parseCases, scoreCase, loadCaseFiles, type EvalCase } from "../src/eval/cases.ts";
+import { caseMessages, parseCases, scoreCase, loadCaseFiles, type EvalCase } from "../src/eval/cases.ts";
+import { PACKET_CONTEXT } from "../src/patient-context.ts";
 import { VALID_REPLY } from "./fakes.ts";
 
 const baseCase: EvalCase = {
@@ -56,9 +57,16 @@ test("rejects unknown checks so a typo can't pass silently", () => {
   assert.throws(() => parseCases(JSON.stringify([typo]), "cases.json"), /escalte/);
 });
 
-test("rejects patient context until the runner can swap it in", () => {
-  const withContext = { ...baseCase, context: { pipelineStatus: "LEAD" } };
-  assert.throws(() => parseCases(JSON.stringify([withContext]), "cases.json"), /context/);
+test("a case can name a Patient context file, and its message runs with that context", () => {
+  const [withContext] = parseCases(JSON.stringify([{ ...baseCase, context: "evals/contexts/lead.json" }]), "cases.json");
+  const [packetMessage, leadMessage] = caseMessages([baseCase, { ...withContext, id: "lead" }]);
+  assert.equal(packetMessage.context, PACKET_CONTEXT);
+  assert.equal(leadMessage.context?.PIPELINE_STATUS, "LEAD");
+  assert.deepEqual({ id: leadMessage.id, text: leadMessage.text }, { id: "lead", text: baseCase.text });
+});
+
+test("a case's context must be a file path", () => {
+  assert.throws(() => parseCases(JSON.stringify([{ ...baseCase, context: { PIPELINE_STATUS: "LEAD" } }]), "cases.json"), /context/);
 });
 
 test("rejects duplicate case ids across files", () => {

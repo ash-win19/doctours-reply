@@ -1,0 +1,122 @@
+[
+  {
+    "id": "lead-first-contact",
+    "group": "intake-photos",
+    "rule": "Source, FIRST-CONTACT INTRODUCTION: on the first reply, introduce yourself by name, then ask the procedure area in words.",
+    "text": "Hi! I saw your ad and I'm interested in a hair transplant.",
+    "context": "evals/contexts/lead.json",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Alex",
+        [
+          "hairline",
+          "crown"
+        ]
+      ],
+      "noUrl": true
+    }
+  },
+  {
+    "id": "lead-area-ask",
+    "group": "intake-photos",
+    "rule": "Source, COLLECTION PERSISTENCE and PRE-ASSESSMENT CLINIC AND PRICING ANSWERS: answer first, then exactly one anchor, and area comes first.",
+    "text": "How much does a hair transplant cost?",
+    "context": "evals/contexts/lead.json",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "hairline",
+          "crown",
+          "full top"
+        ]
+      ],
+      "noUrl": true
+    }
+  },
+  {
+    "id": "lead-photo-ask",
+    "group": "intake-photos",
+    "rule": "Source, CONCERN REFLECTION and IMAGE GUIDANCE: a described concern answers the area, so the photo ask follows with the send-done instruction and the upload link last.",
+    "text": "My edges have been receding for a few years and honestly it's really getting to me.",
+    "context": "evals/contexts/lead.json",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Front",
+        "done"
+      ],
+      "lastLineUrl": "https://www.doctours.com/image-upload"
+    }
+  },
+  {
+    "id": "lead-hair-state-delay",
+    "group": "intake-photos",
+    "rule": "Source, IMAGE DELAY HANDLING: a sew-in gets a two-week check-in and no upload link.",
+    "text": "I'd love to get started but I have a sew-in in right now, so photos wouldn't show much.",
+    "context": "evals/contexts/lead.json",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "two weeks",
+          "2 weeks"
+        ]
+      ],
+      "noUrl": true
+    }
+  },
+  {
+    "id": "lead-done-not-saved",
+    "group": "intake-photos",
+    "rule": "Source, IMAGE GUIDANCE: after \"done\", check getPatientImagesTool; with no photos saved, say to tap Save photos, send done again, upload link last.",
+    "text": "done, I uploaded them all",
+    "context": "evals/contexts/lead.json",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Save photos"
+      ],
+      "lastLineUrl": "https://www.doctours.com/image-upload",
+      "calls": [
+        {
+          "tool": "getPatientImagesTool"
+        }
+      ]
+    }
+  },
+  {
+    "id": "lead-shares-name",
+    "group": "intake-photos",
+    "rule": "Source, DATA COLLECTION: a name the Patient shares is saved with updateUserTool.",
+    "text": "I'm Marcus. I want to do something about my crown.",
+    "context": "evals/contexts/lead.json",
+    "expect": {
+      "escalate": false,
+      "calls": [
+        {
+          "tool": "updateUserTool",
+          "argsInclude": [
+            "Marcus"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "see-my-photos",
+    "group": "intake-photos",
+    "rule": "Source, CAPABILITIES & CONSTRAINTS: the Patient's own intake photos may be attached, at most 3, all from getPatientImagesTool.",
+    "text": "Can I see my photos?",
+    "expect": {
+      "escalate": false,
+      "maxAttachments": 3,
+      "calls": [
+        {
+          "tool": "getPatientImagesTool"
+        }
+      ]
+    }
+  }
+]

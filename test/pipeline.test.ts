@@ -4,6 +4,7 @@ import { respond, type PipelineTrace } from "../src/pipeline.ts";
 import { DraftingError, type CreateResponse } from "../src/model-calls.ts";
 import { SetupError } from "../src/errors.ts";
 import { loadSkillRegistry } from "../src/skills.ts";
+import { PACKET_CONTEXT, loadContext } from "../src/patient-context.ts";
 import { VALID_REPLY, firstUserText, functionCall, scriptedModel, triageDecision } from "./fakes.ts";
 
 const noModel: CreateResponse = async () => {
@@ -155,4 +156,39 @@ test("baseline mode skips guards and triage", async () => {
   assert.deepEqual(reply, VALID_REPLY);
   assert.equal(model.requests.length, 1);
   assert.match(model.requests[0].instructions as string, /^# IDENTITY/);
+});
+
+const lead = loadContext("evals/contexts/lead.json");
+
+test("a swapped context reaches triage, the core prompt, the Pipeline Status module and the tools", async () => {
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["intake-photos"] }))],
+    [functionCall("getPatientImagesTool", {})],
+    [functionCall("submitReply", VALID_REPLY)],
+  ]);
+  const { trace } = await respond("done", "default", { ...options(model.create), context: lead });
+  assert.match(firstUserText(model.requests[0]), /Pipeline Status: LEAD/);
+  assert.match(firstUserText(model.requests[0]), /Intake items: area MISSING; name MISSING; photos MISSING/);
+  const system = model.requests[1].instructions as string;
+  assert.match(system, /# PIPELINE STATUS: LEAD/);
+  assert.match(system, /## Recent conversation\nNo messages yet\./);
+  assert.match(firstUserText(model.requests[1]), /Triggering sender: \+15555550199/);
+  assert.equal((trace.toolCalls![0].output as { hasImages: boolean }).hasImages, false);
+});
+
+test("an unknown Pipeline Status is answered reactively with skills, not by the baseline", async () => {
+  const model = scriptedModel([[functionCall("submitTriage", triageDecision())], [functionCall("submitReply", VALID_REPLY)]]);
+  const { trace } = await respond("thanks", "default", {
+    ...options(model.create),
+    context: { ...PACKET_CONTEXT, PIPELINE_STATUS: "SOMETHING_NEW" },
+  });
+  assert.equal((trace as PipelineTrace).path, "skills");
+  assert.match(model.requests[1].instructions as string, /answer reactively/);
+});
+
+test("baseline mode fills the original prompt and tools from a swapped context", async () => {
+  const model = scriptedModel([[functionCall("getPatientImagesTool", {})], [functionCall("submitReply", VALID_REPLY)]]);
+  const { trace } = await respond("done", "baseline", { ...options(model.create), context: lead });
+  assert.ok((model.requests[0].instructions as string).includes(lead.PATIENT_SUMMARY));
+  assert.equal((trace.toolCalls![0].output as { hasImages: boolean }).hasImages, false);
 });
