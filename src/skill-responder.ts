@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { escalationReply } from "./escalation.ts";
-import { asDraftingError, type ModelOptions } from "./model-calls.ts";
+import { DraftingError, asDraftingError, type ModelOptions } from "./model-calls.ts";
 import {
   buildCorePrompt,
   buildResponderSystemPrompt,
@@ -10,12 +10,15 @@ import {
 } from "./prompt.ts";
 import type { Reply } from "./reply.ts";
 import type { Skill, SkillRegistry } from "./skills.ts";
+import { SUBAGENT_TOOLS, isSubagentTool, type SubagentContext, type SubagentRecord } from "./subagent-tools.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
-import { runTool, toolDefinition, toolsNamed } from "./tools.ts";
+import { runTool, toolDefinition, toolsNamed, type SubagentToolName } from "./tools.ts";
 
 export interface SkillResponderTrace extends ResponderTrace {
   // Skills triage chose, and skills the responder loaded mid-turn with loadSkill.
   skills: { chosen: string[]; loaded: string[] };
+  // One record per subagent call. Their model calls are in modelCalls too, under their own step.
+  subagents: SubagentRecord[];
 }
 
 const LOAD_SKILL = "loadSkill";
@@ -34,15 +37,17 @@ export interface SkillResponderInput {
   registry: SkillRegistry;
   // Skill ids triage chose. All must be in the registry.
   chosen: string[];
-  patient: CoreContext;
+  patient: CoreContext & SubagentContext;
   // The module for the Patient's Pipeline Status, which code picks.
   status: string | null;
+  // The small model subagents run on. Defaults to the responder's model.
+  subagentModel?: string;
 }
 
 // Writes the Reply from the core, the Pipeline Status module and the chosen skills, with only those skills' tools.
 export async function respondWithSkills(
   message: string,
-  { registry, chosen, patient, status }: SkillResponderInput,
+  { registry, chosen, patient, status, subagentModel }: SkillResponderInput,
   options: ModelOptions,
 ): Promise<{ reply: Reply; trace: SkillResponderTrace }> {
   const loaded: Skill[] = registry.resolve(chosen);
@@ -55,6 +60,7 @@ export async function respondWithSkills(
     }),
     userMessage: buildResponderUserMessage(message, patient),
     skills: { chosen, loaded: [] },
+    subagents: [],
     modelCalls: [],
     toolCalls: [],
     finalOutput: null,
@@ -78,7 +84,21 @@ export async function respondWithSkills(
     return { isError: false, output: added.map(formatSkill).join("\n\n") };
   }
 
-  function callTool(name: string, input: unknown): ToolOutcome {
+  // Only the subagent's short answer comes back, so what it read never enters this context.
+  // A subagent that fails still leaves its record, and the message fails like any other drafting failure.
+  async function runSubagent(name: SubagentToolName, input: unknown): Promise<ToolOutcome> {
+    const tool = SUBAGENT_TOOLS[name];
+    const parsed = tool.input.safeParse(input);
+    if (!parsed.success) return { isError: true, output: `Invalid input for ${name}: ${z.prettifyError(parsed.error)}` };
+    const run = await tool.run(parsed.data, { create: options.create, model: subagentModel ?? options.model }, patient);
+    const { modelCalls, ...record } = run.trace;
+    trace.modelCalls.push(...modelCalls);
+    trace.subagents.push(record);
+    if (run.answer === null) throw new DraftingError(`${name} failed: ${record.error}`, trace);
+    return { isError: false, output: run.answer };
+  }
+
+  function callTool(name: string, input: unknown): ToolOutcome | Promise<ToolOutcome> {
     if (name === LOAD_SKILL) return loadSkill(input);
     if (name === ESCALATE) {
       const parsed = EscalateInput.safeParse(input);
@@ -88,6 +108,7 @@ export async function respondWithSkills(
     if (!allowedTools().includes(name)) {
       return { isError: true, output: `${name} isn't available. Load the skill that has it with ${LOAD_SKILL}.` };
     }
+    if (isSubagentTool(name)) return runSubagent(name, input);
     return runTool(name, input);
   }
 
@@ -95,7 +116,14 @@ export async function respondWithSkills(
     const reply = await runToolLoop(
       {
         trace,
-        tools: () => [...toolsNamed(allowedTools()), loadSkillTool, escalateTool],
+        tools: () => [
+          ...toolsNamed(allowedTools()),
+          ...allowedTools()
+            .filter(isSubagentTool)
+            .map((name) => SUBAGENT_TOOLS[name].definition),
+          loadSkillTool,
+          escalateTool,
+        ],
         callTool,
         // Only the escalate tool escalates, so a submitted Reply never does.
         onSubmit: (submitted) => ({ ...submitted, templateId: null, escalate: false, escalationReason: null }),

@@ -36,7 +36,7 @@ export interface ToolLoop {
   trace: ResponderTrace;
   // The tools offered on each call. submitReply is always added.
   tools: () => FunctionTool[];
-  callTool: (name: string, input: unknown) => ToolOutcome;
+  callTool: (name: string, input: unknown) => ToolOutcome | Promise<ToolOutcome>;
   // Code-owned fields on a submitted Reply, such as templateId.
   onSubmit: (reply: Reply) => Reply;
 }
@@ -87,7 +87,7 @@ export async function runToolLoop(loop: ToolLoop, { create, model }: ModelOption
         output = submission.feedback;
       } else {
         const args = parseArguments(functionCall.arguments);
-        const outcome: ToolOutcome = args.ok ? loop.callTool(name, args.value) : { isError: true, output: args.error };
+        const outcome: ToolOutcome = args.ok ? await loop.callTool(name, args.value) : { isError: true, output: args.error };
         const traced = "reply" in outcome ? { isError: false, output: outcome.reply } : outcome;
         trace.toolCalls.push({ name, input: args.ok ? args.value : functionCall.arguments, ...traced });
         if ("reply" in outcome) return outcome.reply;

@@ -1,0 +1,69 @@
+[
+  {
+    "id": "ch-call-topics",
+    "group": "call-history",
+    "rule": "Source, TOOL USAGE: \"Use getFullCallsTool only when you need full call context and there has been a very recent call listed in context.\" AW-100 routes that through the askCallHistory subagent. The core's Recent calls line already mentions the hairline and 4C, so the calls check is what shows the subagent answered.",
+    "text": "What did we talk about on the call?",
+    "expect": {
+      "escalate": false,
+      "calls": [
+        {
+          "tool": "askCallHistory"
+        }
+      ],
+      "includes": [
+        "hairline"
+      ],
+      "maxSentences": 4
+    }
+  },
+  {
+    "id": "ch-hair-type",
+    "group": "call-history",
+    "rule": "Source, TOOL USAGE: \"Use getFullCallsTool only when you need full call context and there has been a very recent call listed in context.\" AW-100 routes that through the askCallHistory subagent. The core's Recent calls line already mentions the hairline and 4C, so the calls check is what shows the subagent answered.",
+    "text": "Did I mention my hair type on the call?",
+    "expect": {
+      "escalate": false,
+      "calls": [
+        {
+          "tool": "askCallHistory"
+        }
+      ],
+      "includes": [
+        "4C"
+      ]
+    }
+  },
+  {
+    "id": "ch-not-covered",
+    "group": "call-history",
+    "rule": "Source, TOOL USAGE: \"Use getFullCallsTool only when you need full call context and there has been a very recent call listed in context.\" AW-100 routes that through the askCallHistory subagent. Source, GUIDELINES: \"If you cannot adequately answer a question with the tools and knowledge available to you, say so honestly rather than fabricating an answer.\"",
+    "text": "Did we go over my budget on the call?",
+    "expect": {
+      "escalate": false,
+      "calls": [
+        {
+          "tool": "askCallHistory"
+        }
+      ],
+      "excludes": [
+        "$"
+      ],
+      "includes": [
+        [
+          "didn't",
+          "did not",
+          "don't have",
+          "doesn't",
+          "does not",
+          "wasn't",
+          "was not",
+          "no mention",
+          "not covered",
+          "never came up",
+          "didn't come up"
+        ]
+      ]
+    }
+  }
+]
