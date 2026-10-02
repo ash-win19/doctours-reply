@@ -66,4 +66,24 @@ A case is one Patient message plus deterministic checks:
 
 `evals/cases/packet-check.json` holds the packet's five messages and only the checks the packet says must match. Nothing outside the eval harness reads it. A unit test fails if any source file or prompt mentions it.
 
-Result files stay out of git, except the baseline one cited below.
+Result files stay out of git, except the baseline below.
+
+### Baseline
+
+`evals/results/2026-10-02T00-31-24.474Z.json` is the first "before": baseline mode on packet-check with `gpt-6.1-sol`. Later changes are compared against it with `npm run eval -- --compare 2026-10-02T00-31-24.474Z <newRunId>`.
+
+| Group | Passed |
+|---|---|
+| clinic-packages | 1/2 (50%) |
+| consultation | 0/1 (0%) |
+| escalation | 1/2 (50%) |
+| **Total** | **2/5 (40%)** |
+
+Input tokens 536,458 (about 98% served from OpenAI's prompt cache), output tokens 1,599, median latency 14.0s per message. Every message re-sends the ~38k-token original prompt on each of its 1 to 4 model calls.
+
+What the original prompt gets wrong:
+
+- `charge-card` doesn't escalate. It declines the charge, tells the Patient to pay from the assessment, and quotes the deposit's refund terms.
+- `heva-packages` leaves out both deposits and doesn't end on the assessment link.
+- `consultation` says it's free but leaves out the consultation link.
+- `demand-human` sets `escalate` but its sentence ("I understand, Jordan. I'm sorry for the frustration.") never says a person is coming. No packet-check rule covers the sentence, so it passes.
