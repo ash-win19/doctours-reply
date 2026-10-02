@@ -4,7 +4,6 @@ import { respond, type PipelineTrace } from "../src/pipeline.ts";
 import { DraftingError, tokenUsage, type CreateResponse } from "../src/model-calls.ts";
 import { SetupError } from "../src/errors.ts";
 import { loadSkillRegistry } from "../src/skills.ts";
-import type { SkillResponderTrace } from "../src/skill-responder.ts";
 import { VALID_REPLY, firstUserText, functionCall, scriptedModel, triageDecision } from "./fakes.ts";
 
 const noModel: CreateResponse = async () => {
@@ -169,7 +168,8 @@ test("the call-history subagent runs on the triage model, nested under the messa
   assert.equal(model.requests[2].model, "triage-model");
   const pipelineTrace = trace as PipelineTrace;
   assert.deepEqual(pipelineTrace.modelCalls.map((call) => call.step), ["triage", "responder", "callHistory", "responder"]);
-  const { subagents } = pipelineTrace.responder as unknown as SkillResponderTrace;
-  assert.equal(subagents[0].subagent, "callHistory");
+  const responder = pipelineTrace.responder!;
+  assert.ok("subagents" in responder);
+  assert.equal(responder.subagents[0].subagent, "callHistory");
   assert.deepEqual(tokenUsage(trace), { inputTokens: 400, outputTokens: 200 });
 });

@@ -121,6 +121,10 @@ export const TOOLS: FunctionTool[] = Object.entries(SPECS).map(([name, toolSpec]
 
 export const TOOL_NAMES = Object.keys(SPECS);
 
+// Tools that run a subagent instead of a packet function. src/subagent-tools.ts holds their definitions.
+export const SUBAGENT_TOOL_NAMES = ["askCallHistory"] as const;
+export type SubagentToolName = (typeof SUBAGENT_TOOL_NAMES)[number];
+
 export function toolsNamed(names: string[]): FunctionTool[] {
   return TOOLS.filter((tool) => names.includes(tool.name));
 }

@@ -1,11 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { ASK_CALL_HISTORY } from "./call-history.ts";
 import type { SkillSummary } from "./prompt.ts";
-import { TOOL_NAMES } from "./tools.ts";
+import { SUBAGENT_TOOL_NAMES, TOOL_NAMES } from "./tools.ts";
 
-// The packet's functions, plus tools the skill responder runs itself.
-const KNOWN_TOOLS = [...TOOL_NAMES, ASK_CALL_HISTORY];
+// The packet's functions, plus the subagent tools the skill responder runs itself.
+const KNOWN_TOOLS: string[] = [...TOOL_NAMES, ...SUBAGENT_TOOL_NAMES];
 
 const SKILLS_DIR = new URL("../prompts/skills/", import.meta.url);
 const STATUS_DIR = new URL("../prompts/status/", import.meta.url);

@@ -2,7 +2,7 @@
   {
     "id": "ch-call-topics",
     "group": "call-history",
-    "rule": "AW-100: a question about a call is answered by the call-history subagent from the full call records.",
+    "rule": "Source, TOOL USAGE: \"Use getFullCallsTool only when you need full call context and there has been a very recent call listed in context.\" AW-100 routes that through the askCallHistory subagent. The core's Recent calls line already mentions the hairline and 4C, so the calls check is what shows the subagent answered.",
     "text": "What did we talk about on the call?",
     "expect": {
       "escalate": false,
@@ -20,7 +20,7 @@
   {
     "id": "ch-hair-type",
     "group": "call-history",
-    "rule": "AW-100: the subagent reads the transcript, where Jordan said their hair is 4C.",
+    "rule": "Source, TOOL USAGE: \"Use getFullCallsTool only when you need full call context and there has been a very recent call listed in context.\" AW-100 routes that through the askCallHistory subagent. The core's Recent calls line already mentions the hairline and 4C, so the calls check is what shows the subagent answered.",
     "text": "Did I mention my hair type on the call?",
     "expect": {
       "escalate": false,
@@ -37,7 +37,7 @@
   {
     "id": "ch-not-covered",
     "group": "call-history",
-    "rule": "AW-100: when the calls don't cover the question, the Reply says so instead of guessing. Source, GUIDELINES: say so honestly rather than fabricating an answer.",
+    "rule": "Source, TOOL USAGE: \"Use getFullCallsTool only when you need full call context and there has been a very recent call listed in context.\" AW-100 routes that through the askCallHistory subagent. Source, GUIDELINES: \"If you cannot adequately answer a question with the tools and knowledge available to you, say so honestly rather than fabricating an answer.\"",
     "text": "Did we go over my budget on the call?",
     "expect": {
       "escalate": false,

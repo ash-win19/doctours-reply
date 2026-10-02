@@ -211,9 +211,27 @@ test("a failed subagent fails the message, keeping the responder's trace and the
   );
   await assert.rejects(result, (error: unknown) => {
     assert.ok(error instanceof DraftingError);
+    assert.match(error.message, /askCallHistory/);
     const trace = error.trace as SkillResponderTrace;
     assert.match(trace.system, /# SKILL: call-history/);
     assert.deepEqual(trace.modelCalls.map((call) => call.step), ["responder", "callHistory", "callHistory"]);
+    const [record] = trace.subagents;
+    assert.equal(record.subagent, "callHistory");
+    assert.equal(record.answer, null);
+    assert.match(record.error!, /submitAnswer/);
+    assert.deepEqual(record.usage, { inputTokens: 200, outputTokens: 100 });
+    assert.equal(typeof record.latencyMs, "number");
     return true;
   });
+});
+
+test("askCallHistory without a question goes back to the responder as an error", async () => {
+  const { model, result } = runWithSubagent(
+    ["call-history"],
+    [[functionCall("askCallHistory", {})], [functionCall("submitReply", VALID_REPLY)]],
+  );
+  const { trace } = await result;
+  assert.match(lastOutput(model.requests[1]), /Invalid input for askCallHistory/);
+  assert.equal(trace.toolCalls[0].isError, true);
+  assert.deepEqual(trace.subagents, []);
 });

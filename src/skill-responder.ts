@@ -1,8 +1,6 @@
 import { z } from "zod";
-import { ASK_CALL_HISTORY, AskCallHistoryInput, askCallHistory, askCallHistoryTool } from "./call-history.ts";
-import { SetupError } from "./errors.ts";
 import { escalationReply } from "./escalation.ts";
-import { DraftingError, asDraftingError, tokenUsage, type ModelOptions } from "./model-calls.ts";
+import { DraftingError, asDraftingError, type ModelOptions } from "./model-calls.ts";
 import {
   buildCorePrompt,
   buildResponderSystemPrompt,
@@ -12,22 +10,14 @@ import {
 } from "./prompt.ts";
 import type { Reply } from "./reply.ts";
 import type { Skill, SkillRegistry } from "./skills.ts";
+import { SUBAGENT_TOOLS, isSubagentTool, type SubagentContext, type SubagentRecord } from "./subagent-tools.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
-import { runTool, toolDefinition, toolsNamed } from "./tools.ts";
-
-// One subagent call made for this message. Its model calls are also in modelCalls, under their own step.
-export interface SubagentRecord {
-  subagent: "callHistory";
-  question: string;
-  answer: string;
-  callIds: string[];
-  usage: { inputTokens: number; outputTokens: number };
-  latencyMs: number;
-}
+import { runTool, toolDefinition, toolsNamed, type SubagentToolName } from "./tools.ts";
 
 export interface SkillResponderTrace extends ResponderTrace {
   // Skills triage chose, and skills the responder loaded mid-turn with loadSkill.
   skills: { chosen: string[]; loaded: string[] };
+  // One record per subagent call. Their model calls are in modelCalls too, under their own step.
   subagents: SubagentRecord[];
 }
 
@@ -47,7 +37,7 @@ export interface SkillResponderInput {
   registry: SkillRegistry;
   // Skill ids triage chose. All must be in the registry.
   chosen: string[];
-  patient: CoreContext & { SUPABASE_CHAT_ID: string };
+  patient: CoreContext & SubagentContext;
   // The module for the Patient's Pipeline Status, which code picks.
   status: string | null;
   // The small model subagents run on. Defaults to the responder's model.
@@ -94,32 +84,18 @@ export async function respondWithSkills(
     return { isError: false, output: added.map(formatSkill).join("\n\n") };
   }
 
-  // Only the subagent's short answer comes back, so call transcripts never enter this context.
-  async function askCalls(input: unknown): Promise<ToolOutcome> {
-    const parsed = AskCallHistoryInput.safeParse(input);
-    if (!parsed.success) return { isError: true, output: `${ASK_CALL_HISTORY} takes { question }` };
-    const { question } = parsed.data;
-    try {
-      const result = await askCallHistory(
-        question,
-        { create: options.create, model: subagentModel ?? options.model },
-        { chatId: patient.SUPABASE_CHAT_ID },
-      );
-      trace.modelCalls.push(...result.trace.modelCalls);
-      trace.subagents.push({
-        subagent: "callHistory",
-        question,
-        answer: result.answer,
-        callIds: result.callIds,
-        usage: tokenUsage(result.trace),
-        latencyMs: result.trace.modelCalls.reduce((total, call) => total + call.latencyMs, 0),
-      });
-      return { isError: false, output: result.answer };
-    } catch (error) {
-      if (error instanceof DraftingError) trace.modelCalls.push(...error.trace.modelCalls);
-      if (error instanceof SetupError) throw error;
-      throw new DraftingError(`Call history: ${error instanceof Error ? error.message : String(error)}`, trace);
-    }
+  // Only the subagent's short answer comes back, so what it read never enters this context.
+  // A subagent that fails still leaves its record, and the message fails like any other drafting failure.
+  async function runSubagent(name: SubagentToolName, input: unknown): Promise<ToolOutcome> {
+    const tool = SUBAGENT_TOOLS[name];
+    const parsed = tool.input.safeParse(input);
+    if (!parsed.success) return { isError: true, output: `Invalid input for ${name}: ${z.prettifyError(parsed.error)}` };
+    const run = await tool.run(parsed.data, { create: options.create, model: subagentModel ?? options.model }, patient);
+    const { modelCalls, ...record } = run.trace;
+    trace.modelCalls.push(...modelCalls);
+    trace.subagents.push(record);
+    if (run.answer === null) throw new DraftingError(`${name} failed: ${record.error}`, trace);
+    return { isError: false, output: run.answer };
   }
 
   function callTool(name: string, input: unknown): ToolOutcome | Promise<ToolOutcome> {
@@ -132,7 +108,7 @@ export async function respondWithSkills(
     if (!allowedTools().includes(name)) {
       return { isError: true, output: `${name} isn't available. Load the skill that has it with ${LOAD_SKILL}.` };
     }
-    if (name === ASK_CALL_HISTORY) return askCalls(input);
+    if (isSubagentTool(name)) return runSubagent(name, input);
     return runTool(name, input);
   }
 
@@ -142,7 +118,9 @@ export async function respondWithSkills(
         trace,
         tools: () => [
           ...toolsNamed(allowedTools()),
-          ...(allowedTools().includes(ASK_CALL_HISTORY) ? [askCallHistoryTool] : []),
+          ...allowedTools()
+            .filter(isSubagentTool)
+            .map((name) => SUBAGENT_TOOLS[name].definition),
           loadSkillTool,
           escalateTool,
         ],

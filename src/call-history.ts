@@ -1,92 +1,77 @@
-import type { ResponseInputItem } from "openai/resources/responses/responses";
 import { z } from "zod";
-import {
-  DraftingError,
-  asDraftingError,
-  functionCalls,
-  parseSubmission,
-  tracedCall,
-  type ModelOptions,
-  type Trace,
-} from "./model-calls.ts";
+import { DraftingError, asDraftingError, forcedSubmit, tokenUsage, type ModelOptions, type Trace } from "./model-calls.ts";
+import { redactCardNumbers } from "./guards.ts";
 import { buildCallHistorySystemPrompt, buildCallHistoryUserMessage } from "./prompt.ts";
 import { runTool, toolDefinition } from "./tools.ts";
 
-export const ASK_CALL_HISTORY = "askCallHistory";
+const CallHistoryAnswerSchema = z.object({
+  answer: z
+    .string()
+    .describe("At most 3 short sentences answering the question, or that the calls don't cover it."),
+  callIds: z.array(z.string()).describe("The ids of the calls the answer came from."),
+});
 
-export const AskCallHistoryInput = z.object({ question: z.string() });
-
-// The responder sees only this tool. The transcripts stay with the subagent.
-export const askCallHistoryTool = toolDefinition(
-  ASK_CALL_HISTORY,
-  "Ask a question about the patient's past calls with Doctours. A separate reader checks the full call summaries and transcripts and returns a short answer.",
-  AskCallHistoryInput,
+const submitAnswerTool = toolDefinition(
+  "submitAnswer",
+  "Submit the answer about the patient's calls.",
+  CallHistoryAnswerSchema,
 );
 
-const CallHistoryAnswerSchema = z.object({ answer: z.string(), callIds: z.array(z.string()) });
-
-export interface CallHistoryTrace extends Trace {
+// What one call-history question did. It goes on the responder's trace under subagents.
+export interface CallHistoryRecord {
   subagent: "callHistory";
   question: string;
-  output: unknown;
+  // Null when the subagent couldn't answer, with the reason in error.
+  answer: string | null;
+  callIds: string[];
+  usage: { inputTokens: number; outputTokens: number };
+  latencyMs: number;
+  error: string | null;
 }
 
-const SUBMIT_ANSWER = "submitAnswer";
-// One retry when the answer doesn't parse.
-const MAX_ATTEMPTS = 2;
-const MAX_SENTENCES = 3;
-
-const submitAnswerTool = toolDefinition(SUBMIT_ANSWER, "Submit the answer about the patient's calls.", CallHistoryAnswerSchema);
-
-// Keeps the first sentences of an answer, each ending in ".", "?" or "!".
-export function firstSentences(text: string, max: number): string {
-  const sentences = text.trim().match(/[^.?!]+[.?!]+|[^.?!]+$/g) ?? [];
-  return sentences.slice(0, max).join("").trim();
-}
+export type CallHistoryTrace = CallHistoryRecord & Trace;
 
 // A separate small-model call over the full call records, so transcripts never enter the responder's context.
+// Setup errors stop the run. Any other failure comes back as a null answer with the error recorded.
 export async function askCallHistory(
   question: string,
   options: ModelOptions,
   { chatId }: { chatId: string },
-): Promise<{ answer: string; callIds: string[]; trace: CallHistoryTrace }> {
-  const callRecords = runTool("getFullCallsTool", { chatId }).output;
-  const trace: CallHistoryTrace = { subagent: "callHistory", question, output: null, modelCalls: [] };
+): Promise<{ answer: string | null; trace: CallHistoryTrace }> {
+  const started = performance.now();
+  const trace: CallHistoryTrace = {
+    subagent: "callHistory",
+    question,
+    answer: null,
+    callIds: [],
+    usage: { inputTokens: 0, outputTokens: 0 },
+    latencyMs: 0,
+    error: null,
+    modelCalls: [],
+  };
   try {
-    const { answer, callIds } = await submitAnswerLoop(buildCallHistoryUserMessage(question, callRecords), trace, options);
-    return { answer: firstSentences(answer, MAX_SENTENCES), callIds, trace };
-  } catch (error) {
-    throw asDraftingError(error, trace);
-  }
-}
-
-async function submitAnswerLoop(
-  userMessage: string,
-  trace: CallHistoryTrace,
-  { create, model }: ModelOptions,
-): Promise<z.infer<typeof CallHistoryAnswerSchema>> {
-  const conversation: ResponseInputItem[] = [{ role: "user", content: userMessage }];
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const response = await tracedCall(
-      create,
+    const callRecords = runTool("getFullCallsTool", { chatId }).output;
+    const submitted = await forcedSubmit(
       {
-        model,
-        instructions: buildCallHistorySystemPrompt(),
-        input: conversation,
-        tools: [submitAnswerTool],
-        tool_choice: { type: "function", name: SUBMIT_ANSWER },
-        max_output_tokens: 4000,
+        trace,
+        step: "callHistory",
+        system: buildCallHistorySystemPrompt(),
+        userMessage: buildCallHistoryUserMessage(question, callRecords),
+        tool: submitAnswerTool,
+        schema: CallHistoryAnswerSchema,
+        what: "The answer",
       },
-      trace.modelCalls,
-      "callHistory",
+      options,
     );
-    const call = functionCalls(response).find(({ name }) => name === SUBMIT_ANSWER);
-    if (!call) throw new DraftingError("Call history stopped without an answer", trace);
-    conversation.push(...(response.output as ResponseInputItem[]));
-    const submission = parseSubmission(call, CallHistoryAnswerSchema, "The answer");
-    trace.output = submission.raw;
-    if (submission.ok) return submission.value;
-    conversation.push({ type: "function_call_output", call_id: call.call_id, output: submission.feedback });
+    // Call records aren't redacted the way Patient messages are, so card digits are stripped here too.
+    trace.answer = redactCardNumbers(submitted.answer).text;
+    trace.callIds = submitted.callIds;
+  } catch (error) {
+    const failure = asDraftingError(error, trace);
+    if (!(failure instanceof DraftingError)) throw failure;
+    trace.error = failure.message;
   }
-  throw new DraftingError(`Call history did not return a valid answer in ${MAX_ATTEMPTS} attempts`, trace);
+  trace.usage = tokenUsage(trace);
+  trace.latencyMs = Math.round(performance.now() - started);
+  return { answer: trace.answer, trace };
 }

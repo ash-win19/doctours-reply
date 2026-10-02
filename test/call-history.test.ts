@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { askCallHistory } from "../src/call-history.ts";
-import { DraftingError, type CreateResponse } from "../src/model-calls.ts";
+import type { CreateResponse } from "../src/model-calls.ts";
 import { SetupError } from "../src/errors.ts";
+import { SUBAGENT_TOOLS } from "../src/subagent-tools.ts";
 import { firstUserText, functionCall, scriptedModel, toolNames } from "./fakes.ts";
 
 const CALL_ID = "66666666-6666-4666-8666-666666666666";
@@ -11,11 +12,10 @@ const options = (create: CreateResponse) => ({ create, model: "triage-model" });
 
 test("answers from the full call records with a forced submitAnswer call", async () => {
   const model = scriptedModel([[functionCall("submitAnswer", ANSWER)]]);
-  const { answer, callIds } = await askCallHistory("did I mention my hair type on the call?", options(model.create), {
+  const { answer } = await askCallHistory("did I mention my hair type on the call?", options(model.create), {
     chatId: "chat-1",
   });
   assert.equal(answer, "You said your hair is 4C.");
-  assert.deepEqual(callIds, [CALL_ID]);
   const [request] = model.requests;
   assert.equal(request.model, "triage-model");
   assert.deepEqual(request.tool_choice, { type: "function", name: "submitAnswer" });
@@ -27,30 +27,48 @@ test("answers from the full call records with a forced submitAnswer call", async
   assert.match(text, /Free consultation\. Jordan wants a hairline procedure/);
 });
 
-test("the answer is at most three sentences", async () => {
-  const long = { answer: "One. Two? Three! Four. Five.", callIds: [CALL_ID] };
+test("the 3-sentence cap is in the prompt and the answer schema, and the answer is never cut in code", async () => {
+  const long = { answer: "Dr. Hakan came up. The Sapphire package was $3.2k. You asked about 4C hair. Then flights.", callIds: [CALL_ID] };
   const model = scriptedModel([[functionCall("submitAnswer", long)]]);
   const { answer } = await askCallHistory("what did we talk about?", options(model.create), { chatId: "chat-1" });
-  assert.equal(answer, "One. Two? Three!");
+  assert.equal(answer, long.answer);
+  const [request] = model.requests;
+  assert.match(request.instructions as string, /at most 3 short sentences/);
+  assert.match(JSON.stringify(request.tools), /At most 3 short sentences/);
 });
 
-test("the subagent's model call is traced under its own step", async () => {
+test("card numbers in the answer are redacted before the responder or the trace sees them", async () => {
+  const model = scriptedModel([[functionCall("submitAnswer", { answer: "You read out 4111 1111 1111 1111.", callIds: [CALL_ID] })]]);
+  const { answer, trace } = await askCallHistory("what card did I give?", options(model.create), { chatId: "chat-1" });
+  assert.equal(answer, "You read out [card number].");
+  assert.doesNotMatch(JSON.stringify(trace), /4111/);
+});
+
+test("returns its trace record: question, answer, call ids, usage, latency and model calls", async () => {
   const model = scriptedModel([[functionCall("submitAnswer", ANSWER)]]);
   const { trace } = await askCallHistory("what did we talk about?", options(model.create), { chatId: "chat-1" });
-  assert.equal(trace.subagent, "callHistory");
-  assert.equal(trace.question, "what did we talk about?");
-  assert.deepEqual(trace.output, ANSWER);
-  assert.deepEqual(trace.modelCalls.map((call) => call.step), ["callHistory"]);
+  const { modelCalls, latencyMs, ...record } = trace;
+  assert.deepEqual(record, {
+    subagent: "callHistory",
+    question: "what did we talk about?",
+    answer: "You said your hair is 4C.",
+    callIds: [CALL_ID],
+    usage: { inputTokens: 100, outputTokens: 50 },
+    error: null,
+  });
+  assert.equal(typeof latencyMs, "number");
+  assert.deepEqual(modelCalls.map((call) => call.step), ["callHistory"]);
 });
 
-test("an invalid answer goes back once, then fails as a DraftingError with the trace", async () => {
+test("an invalid answer goes back once, then the run returns no answer with the error and usage recorded", async () => {
   const bad = [functionCall("submitAnswer", { answer: 42 })];
   const model = scriptedModel([bad, bad]);
-  await assert.rejects(askCallHistory("what did we talk about?", options(model.create), { chatId: "chat-1" }), (error: unknown) => {
-    assert.ok(error instanceof DraftingError);
-    assert.equal(error.trace.modelCalls.length, 2);
-    return true;
-  });
+  const { answer, trace } = await askCallHistory("what did we talk about?", options(model.create), { chatId: "chat-1" });
+  assert.equal(answer, null);
+  assert.equal(trace.answer, null);
+  assert.match(trace.error!, /submitAnswer/);
+  assert.deepEqual(trace.usage, { inputTokens: 200, outputTokens: 100 });
+  assert.equal(trace.modelCalls.length, 2);
 });
 
 test("a setup error stops the run", async () => {
@@ -58,4 +76,11 @@ test("a setup error stops the run", async () => {
     throw new SetupError("bad key");
   };
   await assert.rejects(askCallHistory("what did we talk about?", options(create), { chatId: "chat-1" }), SetupError);
+});
+
+test("askCallHistory is registered as a subagent tool with a question input", () => {
+  const tool = SUBAGENT_TOOLS.askCallHistory;
+  assert.equal(tool.definition.name, "askCallHistory");
+  assert.equal(tool.input.safeParse({ question: "what did we talk about?" }).success, true);
+  assert.equal(tool.input.safeParse({}).success, false);
 });
