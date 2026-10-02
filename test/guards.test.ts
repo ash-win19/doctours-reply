@@ -19,6 +19,7 @@ test("redacts the last four digits when the Patient names the card they end", ()
     redactCardNumbers("Charge the deposit on my card ending in 4242 right now.").text,
     "Charge the deposit on my card ending in [card number] right now.",
   );
+  assert.equal(redactCardNumbers("my card ending 4242").text, "my card ending [card number]");
   assert.equal(redactCardNumbers("use the visa that ends with 1234").text, "use the visa that ends with [card number]");
   assert.equal(redactCardNumbers("my card's last four are 9876").text, "my card's last four are [card number]");
 });
@@ -29,6 +30,9 @@ test("leaves ordinary numbers alone", () => {
     "Silver is $3,000 and Gold is $4,500",
     "Call me at +1 555 555 0123",
     "I'm thinking March 12, 2027",
+    "my phone number ending in 5678",
+    "I was quoted 1500 2000 3000 4000 grafts by different clinics",
+    "booking 44444444-4444-4444-8444-444444444441",
   ]) {
     assert.deepEqual(redactCardNumbers(text), { text, found: false });
   }
@@ -41,6 +45,8 @@ test("an explicit request for a person is caught in code", () => {
     "get me a human",
     "Can someone call me tomorrow?",
     "please call me back",
+    "Could you call me tonight?",
+    "I need someone to call me",
     "I want to talk to someone, not a bot",
     "Is there a live agent?",
     "representative",
@@ -56,6 +62,9 @@ test("mentions of people that aren't a request for one pass through to triage", 
     "My friend can call me Jay",
     "Does a real doctor do the incisions?",
     "Will someone pick me up from the airport?",
+    "My name is Michael but you can call me Mike",
+    "Can I talk to someone at Heva before I book?",
+    "Can I speak with the surgeon before the procedure?",
   ]) {
     assert.equal(detectHumanRequest(text), false, text);
   }

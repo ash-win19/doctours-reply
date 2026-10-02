@@ -1,12 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { ResponseInputItem } from "openai/resources/responses/responses";
 import { respond, type PipelineTrace } from "../src/pipeline.ts";
-import { ResponderError, type CreateResponse } from "../src/responder.ts";
+import { DraftingError, type CreateResponse } from "../src/model-calls.ts";
 import { SetupError } from "../src/errors.ts";
-import { VALID_REPLY, functionCall, scriptedModel } from "./fakes.ts";
-
-const NO_ESCALATION = { escalate: false, escalationReason: null, cannotDo: null, skills: [], intent: "ask about price" };
+import { VALID_REPLY, firstUserText, functionCall, scriptedModel, triageDecision } from "./fakes.ts";
 
 const noModel: CreateResponse = async () => {
   throw new Error("no model call expected");
@@ -36,12 +33,11 @@ test("an explicit request for a person escalates without a model call", async ()
 });
 
 test("triage sees the message, the state card and the last four turns", async () => {
-  const model = scriptedModel([[functionCall("submitTriage", { ...NO_ESCALATION, escalate: true })]]);
+  const model = scriptedModel([[functionCall("submitTriage", triageDecision({ escalate: true }))]]);
   await respond("refund what I paid yesterday", "default", options(model.create));
   const [request] = model.requests;
   assert.equal(request.model, "triage-model");
-  const [user] = request.input as ResponseInputItem[];
-  const text = (user as { content: string }).content;
+  const text = firstUserText(request);
   assert.match(text, /Pipeline Status: PRE_CLINICAL_SENT/);
   assert.match(text, /Jordan Hale: Any update\?\nAlex: Your assessment is ready/);
   assert.match(text, /"refund what I paid yesterday"/);
@@ -71,7 +67,7 @@ test("when triage escalates, the Reply is the template with what we can't do", a
 });
 
 test("a message that doesn't escalate goes to the baseline responder", async () => {
-  const model = scriptedModel([[functionCall("submitTriage", NO_ESCALATION)], [functionCall("submitReply", VALID_REPLY)]]);
+  const model = scriptedModel([[functionCall("submitTriage", triageDecision())], [functionCall("submitReply", VALID_REPLY)]]);
   const { reply, trace } = await respond("What does Dr. Hakan Clinic cost?", "default", options(model.create));
   assert.deepEqual(reply, VALID_REPLY);
   assert.equal(model.requests[1].model, "responder-model");
@@ -87,9 +83,12 @@ test("a failed model call fails with the trace so far", async () => {
     throw new Error("API down");
   };
   await assert.rejects(respond("What does Heva cost?", "default", options(create)), (error: unknown) => {
-    assert.ok(error instanceof ResponderError);
+    assert.ok(error instanceof DraftingError);
     assert.match(error.message, /API down/);
-    assert.deepEqual((error.trace as PipelineTrace).guards, { cardNumberFound: false, humanRequested: false });
+    const trace = error.trace as PipelineTrace;
+    assert.deepEqual(trace.guards, { cardNumberFound: false, humanRequested: false });
+    assert.equal(trace.path, "drafting-failed");
+    assert.match(trace.triage!.userMessage, /"What does Heva cost\?"/);
     return true;
   });
 });

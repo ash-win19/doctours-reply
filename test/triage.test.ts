@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
+import type { ResponseInputItem } from "openai/resources/responses/responses";
 import { triage, type TriageInput } from "../src/triage.ts";
-import { ResponderError } from "../src/responder.ts";
-import { functionCall, scriptedModel } from "./fakes.ts";
+import { DraftingError } from "../src/model-calls.ts";
+import { firstUserText, functionCall, scriptedModel, toolNames } from "./fakes.ts";
 
 const DECISION = {
   escalate: true,
@@ -19,11 +19,6 @@ const input: TriageInput = {
   recentTurns: ["Jordan Hale: Got it", "Alex: Did any clinic catch your eye?"],
   skillIndex: [],
 };
-
-function userText(request: ResponseCreateParamsNonStreaming): string {
-  const [user] = request.input as ResponseInputItem[];
-  return (user as { content: string }).content;
-}
 
 test("returns the decision the model submits", async () => {
   const model = scriptedModel([[functionCall("submitTriage", DECISION)]]);
@@ -42,11 +37,8 @@ test("sends the policy, skill index, state card, recent turns and message, and f
   assert.match(request.instructions as string, /# Escalation policy/);
   assert.match(request.instructions as string, /- payments: Paying the Deposit, Financing and insurance\./);
   assert.deepEqual(request.tool_choice, { type: "function", name: "submitTriage" });
-  assert.deepEqual(
-    (request.tools ?? []).map((tool) => (tool.type === "function" ? tool.name : tool.type)),
-    ["submitTriage"],
-  );
-  const text = userText(request);
+  assert.deepEqual(toolNames(request), ["submitTriage"]);
+  const text = firstUserText(request);
   assert.match(text, /# State card\nPipeline Status: PRE_CLINICAL_SENT/);
   assert.match(text, /Jordan Hale: Got it\nAlex: Did any clinic catch your eye\?/);
   assert.match(text, /# Incoming message\n"refund what I paid yesterday"/);
@@ -76,7 +68,7 @@ test("a second invalid decision fails with the partial trace", async () => {
   const bad = [functionCall("submitTriage", { escalate: "yes" })];
   const model = scriptedModel([bad, bad]);
   await assert.rejects(triage(input, { create: model.create, model: "triage-model" }), (error: unknown) => {
-    assert.ok(error instanceof ResponderError);
+    assert.ok(error instanceof DraftingError);
     assert.equal(error.trace.modelCalls.length, 2);
     return true;
   });

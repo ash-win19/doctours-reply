@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
-import { respondBaseline, tokenUsage, MAX_TOOL_ROUNDS, ResponderError, type ResponderTrace } from "../src/responder.ts";
-import { VALID_REPLY, scriptedModel, functionCall } from "./fakes.ts";
+import { respondBaseline, MAX_TOOL_ROUNDS, type ResponderTrace } from "../src/responder.ts";
+import { DraftingError, tokenUsage } from "../src/model-calls.ts";
+import { VALID_REPLY, scriptedModel, functionCall, toolNames } from "./fakes.ts";
 
 const options = { model: "fake-model" };
 
@@ -14,10 +15,6 @@ function functionOutputs(request: ResponseCreateParamsNonStreaming) {
   return inputItems(request).filter(
     (item): item is ResponseInputItem.FunctionCallOutput => "type" in item && item.type === "function_call_output",
   );
-}
-
-function toolNames(request: ResponseCreateParamsNonStreaming): string[] {
-  return (request.tools ?? []).flatMap((tool) => (tool.type === "function" ? [tool.name] : []));
 }
 
 test("returns the Reply the model submits", async () => {
@@ -108,7 +105,7 @@ test("throws with the partial trace when the model never submits a valid Reply",
   const lookups = Array.from({ length: 20 }, () => [functionCall("getAllClinicsTool", {})]);
   const model = scriptedModel(lookups);
   await assert.rejects(respondBaseline("hi", { ...options, create: model.create }), (error: unknown) => {
-    assert.ok(error instanceof ResponderError);
+    assert.ok(error instanceof DraftingError);
     assert.match(error.message, /submit/i);
     assert.equal(error.trace.modelCalls.length, 10);
     assert.equal((error.trace as ResponderTrace).toolCalls.length, 10);

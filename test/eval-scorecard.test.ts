@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import type { EvalCase } from "../src/eval/cases.ts";
 import { buildScorecard, compareScorecards, formatScorecard, median } from "../src/eval/scorecard.ts";
 import type { MessageResult, RunOutput } from "../src/runner.ts";
-import type { ModelCallTrace, ResponderTrace } from "../src/responder.ts";
+import type { ModelCallTrace } from "../src/model-calls.ts";
+import type { ResponderTrace } from "../src/responder.ts";
 import { VALID_REPLY } from "./fakes.ts";
 import type { Reply } from "../src/reply.ts";
 

@@ -7,12 +7,12 @@ import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai
 import { runMessages, MAX_CONCURRENCY } from "../src/runner.ts";
 import { SetupError } from "../src/errors.ts";
 import { ReplySchema } from "../src/reply.ts";
-import type { CreateResponse } from "../src/responder.ts";
-import { VALID_REPLY, modelResponse, functionCall } from "./fakes.ts";
+import type { CreateResponse } from "../src/model-calls.ts";
+import { VALID_REPLY, modelResponse, functionCall, firstUserText, toolNames, triageDecision } from "./fakes.ts";
 
+// The baseline user message carries the incoming text on its second line.
 function incomingText(params: ResponseCreateParamsNonStreaming): string {
-  const [user] = params.input as ResponseInputItem[];
-  return (user as { content: string }).content.split("\n")[1];
+  return firstUserText(params).split("\n")[1];
 }
 
 // Answers each message by echoing its text back, after a delay that varies by message.
@@ -141,12 +141,7 @@ test("a failed message's trace keeps its model calls", async () => {
 
 // Triage lets every message through, then the responder echoes the message text back.
 const passThroughModel: CreateResponse = async (params) => {
-  const tools = (params.tools ?? []).map((tool) => (tool.type === "function" ? tool.name : ""));
-  if (tools.includes("submitTriage")) {
-    return modelResponse([
-      functionCall("submitTriage", { escalate: false, escalationReason: null, cannotDo: null, skills: [], intent: "ask" }),
-    ]);
-  }
+  if (toolNames(params).includes("submitTriage")) return modelResponse([functionCall("submitTriage", triageDecision())]);
   return modelResponse([functionCall("submitReply", { ...VALID_REPLY, response: incomingText(params) })]);
 };
 

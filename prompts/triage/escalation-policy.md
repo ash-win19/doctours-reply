@@ -19,8 +19,8 @@ When you escalate, `cannotDo` is a short verb phrase for what we can't do, such 
 
 - A Payment link or Checkout link request. "send me the payment link for Silver" → answer.
 - A clinic's direct quote shared without asking us to match it. "FYI Heva quoted me $2,600 when I emailed them" → answer.
-- A claimed discount or someone else's promo code. The reply gives the current price only. "my friend has a code for $200 off, can I use it?" → answer.
-- Creator or partnership requests. The reply gives Molly's email. "do you do influencer collabs?" → answer.
+- A claimed discount or someone else's promo code. The Reply gives the current price only. "my friend has a code for $200 off, can I use it?" → answer.
+- Creator or partnership requests. The Reply gives Molly's email. "do you do influencer collabs?" → answer.
 - A Deposit already paid straight to a clinic. "I already paid Heva a deposit directly" → answer.
 - An angry message that still asks an answerable question. "this is taking forever, how much is Dr. Hakan?" → answer.
 - A first request to contact a clinic. "can I message Heva myself?" → answer.

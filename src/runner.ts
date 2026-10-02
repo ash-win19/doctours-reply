@@ -5,7 +5,7 @@ import { DRAFTING_FAILED, escalationReply } from "./escalation.ts";
 import { redactCardNumbers } from "./guards.ts";
 import { respond, type Mode } from "./pipeline.ts";
 import type { Reply } from "./reply.ts";
-import { ResponderError, type CreateResponse, type Trace } from "./responder.ts";
+import { DraftingError, type CreateResponse, type Trace } from "./model-calls.ts";
 
 export const MAX_CONCURRENCY = 4;
 
@@ -67,14 +67,14 @@ export async function runMessages(messages: HumanMessage[], mode: Mode, deps: Ru
         setupFailed = true;
         throw caught;
       }
-      if (caught instanceof ResponderError) trace = caught.trace;
+      if (caught instanceof DraftingError) trace = caught.trace;
       error = caught instanceof Error ? caught.message : String(caught);
       // Every message still gets exactly one Reply when drafting fails, so a person takes over.
       reply = escalationReply(DRAFTING_FAILED, null);
     }
     const wallTimeMs = Math.round(performance.now() - started);
     results[index] = { input, reply, trace, error, wallTimeMs };
-    // Card digits never reach a trace file.
+    // The trace file's input never holds card digits. Baseline mode still sends the raw text to the model.
     const tracedInput = { ...input, text: redactCardNumbers(input.text).text };
     writeFileSync(
       join(traceDir, fileNames[index]),

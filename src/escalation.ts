@@ -2,14 +2,11 @@ import type { Reply } from "./reply.ts";
 
 export const DRAFTING_FAILED = "Could not draft a reply";
 
-// The model supplies at most a short verb phrase. Digits and amounts are stripped as a second safety after redaction.
+// The model supplies at most a short verb phrase. As a second safety after redaction, a phrase holding digits
+// is dropped, so the sentence falls back to "I'm getting a person for you."
 function tidyCannotDo(cannotDo: string | null): string | null {
-  if (!cannotDo) return null;
-  const phrase = cannotDo
-    .replace(/[$€£]?\d[\d,.]*/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[.!?,;:\s]+$/, "");
+  if (!cannotDo || /\d/.test(cannotDo)) return null;
+  const phrase = cannotDo.replace(/\s+/g, " ").trim().replace(/[.!?,;:\s]+$/, "");
   if (!/[a-z]/i.test(phrase)) return null;
   // "Hold a date" becomes "hold a date", but a name like "PayPal" keeps its case.
   return /^[A-Z][a-z]*\b/.test(phrase) ? phrase[0].toLowerCase() + phrase.slice(1) : phrase;

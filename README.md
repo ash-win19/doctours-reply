@@ -4,7 +4,7 @@ Writes the Coordinator's Reply to a Patient's text message, or escalates to an O
 
 ## Run it
 
-You need Node 22 or newer and an [OpenAI API key](https://platform.openai.com/api-keys). Replies come from `gpt-6.1-sol` through the Responses API.
+You need Node 22.9 or newer and an [OpenAI API key](https://platform.openai.com/api-keys). Replies come from `gpt-6.1-sol` through the Responses API.
 
 ```sh
 npm install
@@ -20,7 +20,7 @@ npm run respond -- messages.json > replies.json
 - Up to 4 messages run at once.
 - Each message writes a trace to `traces/<runId>/<messageId>.json`. A trace holds the input, the filled prompts, every tool call and result, the final model output, and tokens (including cached and reasoning tokens) and latency for each model call.
 
-Rate limits (429) and server errors are retried by the OpenAI SDK with backoff, honoring `retry-after`, up to 6 times. An account that is out of credit (`insufficient_quota`) stops the run instead of retrying.
+Rate limits (429), server errors and network errors are retried by the OpenAI SDK with exponential backoff, honoring `retry-after`, up to 3 times. Each attempt times out after 3 minutes. A message whose model call still fails escalates. An account that is out of credit (`insufficient_quota`) stops the run instead of retrying.
 
 `RESPONDER_MODEL` sets the OpenAI model that writes Replies and defaults to `gpt-6.1-sol`. Use `gpt-6-astra` for the strongest replies or `gpt-6-luna` for the cheapest. `TRIAGE_MODEL` sets the small model that triages each message and defaults to `gpt-6-luna`.
 
@@ -36,12 +36,12 @@ If a message can't be drafted, its Reply escalates ("I'm getting a person for yo
 
 Escalation is settled before any Reply is drafted (ADR 0001, ADR 0002):
 
-1. **Guards, in code.** Card numbers (13 to 19 digits, with optional spaces or dashes) and phrases like "card ending in 4242" are replaced with "[card number]" before triage, a trace or any model sees the text. Card details or an explicit request for a person ("talk to a human", "real person", "someone call me") escalate with no model call.
+1. **Guards, in code.** Card numbers (13 to 19 digits with optional spaces or dashes that pass the Luhn check) and phrases like "card ending in 4242" are replaced with "[card number]" before triage, a trace or any model sees the text. Card details or an explicit request for a person ("talk to a human", "real person", "someone call me") escalate with no model call.
 2. **Triage.** One `TRIAGE_MODEL` call reads the redacted message, a state card built from the Patient context, the last 4 chat turns and the escalation policy in `prompts/triage/`, and submits `{ escalate, escalationReason, cannotDo, skills, intent }`.
-3. **Escalation.** Code renders the Reply from the ADR 0002 template: "I can't {cannotDo}. I'm getting a person for you.", or "I'm getting a person for you." with no `cannotDo`. Digits and amounts are stripped from `cannotDo`. The Reply sets `escalationReason`, `intent` "escalate to a person" and `workingMemoryUpdates.escalationFlags`.
+3. **Escalation.** Code renders the Reply from the ADR 0002 template: "I can't {cannotDo}. I'm getting a person for you.", or "I'm getting a person for you." with no `cannotDo`. A `cannotDo` holding digits is dropped. The Reply sets `escalationReason`, `intent` "escalate to a person" and `workingMemoryUpdates.escalationFlags`.
 4. **Everything else** goes to the baseline responder for now.
 
-The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation` or `baseline`), and every model call tagged with its step.
+The trace records the guard hits, the triage input and output, the path the message took (`guard-escalation`, `triage-escalation`, `baseline` or `drafting-failed`), and every model call tagged with its step. Trace files never hold card digits in this mode. Baseline mode still sends the raw text to the model, so its `userMessage` does.
 
 ### baseline
 

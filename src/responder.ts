@@ -1,13 +1,18 @@
 import type {
-  Response,
-  ResponseCreateParamsNonStreaming,
-  ResponseFunctionToolCall,
   ResponseInputItem,
-  ResponseUsage,
   ToolChoiceFunction,
   ToolChoiceOptions,
 } from "openai/resources/responses/responses";
-import { z } from "zod";
+import {
+  DraftingError,
+  asDraftingError,
+  functionCalls,
+  parseArguments,
+  parseSubmission,
+  tracedCall,
+  type ModelOptions,
+  type Trace,
+} from "./model-calls.ts";
 import { buildBaselineSystemPrompt, buildBaselineUserMessage } from "./prompt.ts";
 import { ReplySchema, type Reply } from "./reply.ts";
 import { TOOLS, runTool, toolDefinition } from "./tools.ts";
@@ -17,32 +22,11 @@ export const MAX_TOOL_ROUNDS = 8;
 const MAX_MODEL_CALLS = MAX_TOOL_ROUNDS + 2;
 const SUBMIT_REPLY = "submitReply";
 
-export type CreateResponse = (params: ResponseCreateParamsNonStreaming) => Promise<Response>;
-
-export interface ResponderOptions {
-  create: CreateResponse;
-  model: string;
-}
-
-export interface ModelCallTrace {
-  // Which step of the pipeline made the call, such as "triage" or "responder".
-  step: string;
-  model: string;
-  status: Response["status"] | null;
-  usage: ResponseUsage | null;
-  latencyMs: number;
-}
-
 export interface ToolCallTrace {
   name: string;
   input: unknown;
   output: unknown;
   isError: boolean;
-}
-
-// Every trace lists its model calls, so tokens can be totalled whatever produced it.
-export interface Trace {
-  modelCalls: ModelCallTrace[];
 }
 
 export interface ResponderTrace extends Trace {
@@ -52,75 +36,29 @@ export interface ResponderTrace extends Trace {
   finalOutput: unknown;
 }
 
-// OpenAI's output_tokens already include reasoning tokens.
-export function tokenUsage(trace: Trace | null): { inputTokens: number; outputTokens: number } {
-  let inputTokens = 0;
-  let outputTokens = 0;
-  for (const { usage } of trace?.modelCalls ?? []) {
-    inputTokens += usage?.input_tokens ?? 0;
-    outputTokens += usage?.output_tokens ?? 0;
-  }
-  return { inputTokens, outputTokens };
-}
-
-// Carries the partial trace so a failed message's model and tool calls still get written.
-export class ResponderError extends Error {
-  constructor(
-    message: string,
-    readonly trace: Trace,
-  ) {
-    super(message);
-  }
-}
-
 const submitReplyTool = toolDefinition(
   SUBMIT_REPLY,
   "Submit the final Reply to the patient's message. Call this exactly once, after any lookups, to finish the turn.",
   ReplySchema,
 );
 
-type ParsedArguments = { ok: true; value: unknown } | { ok: false; error: string };
-
-export function parseArguments(raw: string): ParsedArguments {
-  try {
-    return { ok: true, value: JSON.parse(raw) };
-  } catch {
-    return { ok: false, error: `Tool arguments are not valid JSON: ${raw}` };
-  }
-}
-
-// Makes one model call and records its usage and latency under the given step.
-export async function tracedCall(
-  create: CreateResponse,
-  params: ResponseCreateParamsNonStreaming,
-  modelCalls: ModelCallTrace[],
-  step: string,
-): Promise<Response> {
-  const started = performance.now();
-  const response = await create(params);
-  modelCalls.push({
-    step,
-    model: response.model,
-    status: response.status ?? null,
-    usage: response.usage ?? null,
-    latencyMs: Math.round(performance.now() - started),
-  });
-  return response;
-}
-
-export function functionCalls(response: Response): ResponseFunctionToolCall[] {
-  return response.output.filter((item): item is ResponseFunctionToolCall => item.type === "function_call");
-}
-
 export async function respondBaseline(
   humanMessage: string,
-  { create, model }: ResponderOptions,
+  options: ModelOptions,
 ): Promise<{ reply: Reply; trace: ResponderTrace }> {
   const system = buildBaselineSystemPrompt();
   const userMessage = buildBaselineUserMessage(humanMessage);
   const trace: ResponderTrace = { system, userMessage, modelCalls: [], toolCalls: [], finalOutput: null };
-  const input: ResponseInputItem[] = [{ role: "user", content: userMessage }];
+  try {
+    return { reply: await submitReplyLoop(trace, options), trace };
+  } catch (error) {
+    throw asDraftingError(error, trace);
+  }
+}
 
+// Runs tools until the model submits a Reply that matches the schema.
+async function submitReplyLoop(trace: ResponderTrace, { create, model }: ModelOptions): Promise<Reply> {
+  const input: ResponseInputItem[] = [{ role: "user", content: trace.userMessage }];
   for (let call = 0; call < MAX_MODEL_CALLS; call++) {
     const toolChoice: ToolChoiceOptions | ToolChoiceFunction =
       call < MAX_TOOL_ROUNDS ? "required" : { type: "function", name: SUBMIT_REPLY };
@@ -128,7 +66,7 @@ export async function respondBaseline(
       create,
       {
         model,
-        instructions: system,
+        instructions: trace.system,
         input,
         tools: [...TOOLS, submitReplyTool],
         tool_choice: toolChoice,
@@ -142,24 +80,21 @@ export async function respondBaseline(
     const calls = functionCalls(response);
     if (calls.length === 0) {
       const reason = response.incomplete_details?.reason ?? response.status ?? "unknown";
-      throw new ResponderError(`Model stopped without calling a tool (${reason})`, trace);
+      throw new DraftingError(`Model stopped without calling a tool (${reason})`, trace);
     }
     // Reasoning models need their reasoning items back alongside the calls they made.
     input.push(...(response.output as ResponseInputItem[]));
 
     for (const functionCall of calls) {
       const { name } = functionCall;
-      const args = parseArguments(functionCall.arguments);
       let output: string;
       if (name === SUBMIT_REPLY) {
-        trace.finalOutput = args.ok ? args.value : functionCall.arguments;
-        const parsed = args.ok ? ReplySchema.safeParse(args.value) : null;
-        if (parsed?.success) {
-          return { reply: { ...parsed.data, templateId: null }, trace };
-        }
-        const problem = parsed ? z.prettifyError(parsed.error) : (args as { error: string }).error;
-        output = `The Reply does not match the schema. Fix it and call ${SUBMIT_REPLY} again.\n${problem}`;
+        const submission = parseSubmission(functionCall, ReplySchema, "The Reply");
+        trace.finalOutput = submission.raw;
+        if (submission.ok) return { ...submission.value, templateId: null };
+        output = submission.feedback;
       } else {
+        const args = parseArguments(functionCall.arguments);
         const toolResult = args.ok ? runTool(name, args.value) : ({ isError: true, output: args.error } as const);
         trace.toolCalls.push({
           name,
@@ -173,5 +108,5 @@ export async function respondBaseline(
     }
   }
 
-  throw new ResponderError(`Model did not submit a valid Reply within ${MAX_MODEL_CALLS} calls`, trace);
+  throw new DraftingError(`Model did not submit a valid Reply within ${MAX_MODEL_CALLS} calls`, trace);
 }

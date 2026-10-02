@@ -20,8 +20,9 @@ export function defaultRunnerDeps(): RunnerDeps {
   if (!process.env.OPENAI_API_KEY) {
     throw new SetupError("Set OPENAI_API_KEY before running");
   }
-  // The SDK retries rate limits and server errors with backoff and honors retry-after.
-  const client = new OpenAI({ maxRetries: 6 });
+  // The SDK retries rate limits, server errors and network errors with exponential backoff and honors
+  // retry-after. A hung call gives up after 3 minutes, so a stuck message escalates instead of stalling the run.
+  const client = new OpenAI({ maxRetries: 3, timeout: 180_000 });
   return {
     create: async (params) => {
       try {

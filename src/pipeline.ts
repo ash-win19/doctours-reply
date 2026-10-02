@@ -4,13 +4,13 @@ import { escalationReply } from "./escalation.ts";
 import { screenMessage } from "./guards.ts";
 import type { Reply } from "./reply.ts";
 import {
-  ResponderError,
-  respondBaseline,
+  DraftingError,
   type CreateResponse,
   type ModelCallTrace,
-  type ResponderTrace,
+  type Step,
   type Trace,
-} from "./responder.ts";
+} from "./model-calls.ts";
+import { respondBaseline, type ResponderTrace } from "./responder.ts";
 import { buildStateCard, recentTurns } from "./state-card.ts";
 import { triage, type TriageTrace } from "./triage.ts";
 
@@ -32,8 +32,8 @@ export interface PipelineOptions {
   triageModel: string;
 }
 
-// Which way a message went: escalated by a guard in code, escalated by triage, or answered.
-export type PipelinePath = "guard-escalation" | "triage-escalation" | "baseline";
+// Which way a message went: escalated by a guard in code, escalated by triage, answered, or failed to draft.
+export type PipelinePath = "guard-escalation" | "triage-escalation" | "baseline" | "drafting-failed";
 
 // A step's trace without its model calls, which the pipeline keeps in one list for token totals.
 type StepTrace<T extends Trace> = Omit<T, "modelCalls">;
@@ -47,7 +47,7 @@ export interface PipelineTrace extends Trace {
 
 const TRIAGE_TURNS = 4;
 
-function split<T extends Trace>({ modelCalls, ...rest }: T, into: ModelCallTrace[]): StepTrace<T> {
+function detachModelCalls<T extends Trace>({ modelCalls, ...rest }: T, into: ModelCallTrace[]): StepTrace<T> {
   into.push(...modelCalls);
   return rest;
 }
@@ -73,7 +73,7 @@ export async function respond(
     return { reply: escalationReply(screening.forceEscalate.reason, screening.forceEscalate.cannotDo), trace };
   }
 
-  let step: "triage" | "responder" = "triage";
+  let step: Step = "triage";
   try {
     const { decision, trace: triageTrace } = await triage(
       {
@@ -84,7 +84,7 @@ export async function respond(
       },
       { create: options.create, model: options.triageModel },
     );
-    trace.triage = split(triageTrace, trace.modelCalls);
+    trace.triage = detachModelCalls(triageTrace, trace.modelCalls);
     if (decision.escalate) {
       trace.path = "triage-escalation";
       return { reply: escalationReply(decision.escalationReason ?? "Triage escalated", decision.cannotDo), trace };
@@ -94,14 +94,16 @@ export async function respond(
     step = "responder";
     trace.path = "baseline";
     const { reply, trace: responderTrace } = await respondBaseline(screening.redactedText, responderOptions);
-    trace.responder = split(responderTrace, trace.modelCalls);
+    trace.responder = detachModelCalls(responderTrace, trace.modelCalls);
     return { reply, trace };
   } catch (error) {
     if (error instanceof SetupError) throw error;
-    if (error instanceof ResponderError) {
-      if (step === "triage") trace.triage = split(error.trace as TriageTrace, trace.modelCalls);
-      else trace.responder = split(error.trace as ResponderTrace, trace.modelCalls);
+    // Each step throws a DraftingError carrying its own partial trace.
+    if (error instanceof DraftingError) {
+      if (step === "triage") trace.triage = detachModelCalls(error.trace as TriageTrace, trace.modelCalls);
+      else trace.responder = detachModelCalls(error.trace as ResponderTrace, trace.modelCalls);
     }
-    throw new ResponderError(error instanceof Error ? error.message : String(error), trace);
+    trace.path = "drafting-failed";
+    throw new DraftingError(error instanceof Error ? error.message : String(error), trace);
   }
 }
