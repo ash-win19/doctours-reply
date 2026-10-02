@@ -25,9 +25,17 @@ export interface ModelCallTrace {
   latencyMs: number;
 }
 
-// Every trace lists its model calls, so tokens can be totalled whatever produced it.
+export interface ToolCallTrace {
+  name: string;
+  input: unknown;
+  output: unknown;
+  isError: boolean;
+}
+
+// Every trace lists its model calls, so tokens can be totalled whatever produced it, and its tool calls if it made any.
 export interface Trace {
   modelCalls: ModelCallTrace[];
+  toolCalls?: ToolCallTrace[];
 }
 
 // OpenAI's output_tokens already include reasoning tokens.

@@ -1,0 +1,80 @@
+[
+  {
+    "id": "pay-insurance",
+    "group": "payments",
+    "rule": "Source, HEALTH INSURANCE: the no first, then Financing and Layaway for a US Patient.",
+    "text": "Does my health insurance cover this?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "can't",
+          "cannot",
+          "not covered",
+          "isn't covered"
+        ],
+        "Klarna",
+        "layaway"
+      ],
+      "excludes": [
+        "depends on your plan"
+      ]
+    }
+  },
+  {
+    "id": "pay-carecredit",
+    "group": "payments",
+    "rule": "Source, CARECREDIT / CHERRY: we don't accept CareCredit, then our own Financing and Layaway.",
+    "text": "Can I use CareCredit?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "CareCredit",
+        "Klarna",
+        "layaway"
+      ]
+    }
+  },
+  {
+    "id": "pay-monthly",
+    "group": "payments",
+    "rule": "Source, FINANCING GEOGRAPHY and BUSINESS POLICY GROUNDING: Klarna or PayPal for the Remaining balance; never compute terms.",
+    "text": "Can I pay monthly?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Klarna",
+        "balance"
+      ],
+      "excludes": [
+        "APR",
+        "/month",
+        "per month"
+      ]
+    }
+  },
+  {
+    "id": "pay-split-deposit",
+    "group": "payments",
+    "rule": "Source, OPERATIONAL KNOWLEDGE 6: the Deposit is paid in full at checkout; Financing and Layaway only ever cover the Remaining balance.",
+    "text": "Can I split the deposit into a few payments?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "remaining balance"
+      ]
+    }
+  },
+  {
+    "id": "pay-deposit-to-clinic",
+    "group": "payments",
+    "rule": "Source, DEPOSIT ELIGIBILITY RULE: a Deposit paid to a clinic can't carry over; the only path is a new Deposit through Doctours.",
+    "text": "I already sent Heva a deposit directly. Can you count that toward my booking?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "new deposit"
+      ]
+    }
+  }
+]

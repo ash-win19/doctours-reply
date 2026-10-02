@@ -4,7 +4,7 @@ Call submitTriage with:
 - escalate: true when the escalation policy below says to escalate.
 - escalationReason: a few words for the Operator on why, or null when escalate is false. No digits.
 - cannotDo: when escalating, a short verb phrase for what we can't do, or null. No digits.
-- skills: the ids of every skill the Reply needs, from the skill index. Empty when escalating or when no skill fits.
+- skills: the ids of every skill the Reply needs, from the skill index. A message that touches two topics needs both skills. Empty when escalating, or when the message needs no topic rules at all, such as "thanks". If the Reply needs rules on a topic no skill covers, add "other".
 - intent: a short phrase for what the Patient wants.
 
 Card numbers in the message are already replaced with "[card number]".

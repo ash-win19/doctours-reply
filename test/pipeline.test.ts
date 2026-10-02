@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { respond, type PipelineTrace } from "../src/pipeline.ts";
 import { DraftingError, type CreateResponse } from "../src/model-calls.ts";
 import { SetupError } from "../src/errors.ts";
+import { loadSkillRegistry } from "../src/skills.ts";
 import { VALID_REPLY, firstUserText, functionCall, scriptedModel, triageDecision } from "./fakes.ts";
 
 const noModel: CreateResponse = async () => {
@@ -66,16 +67,64 @@ test("when triage escalates, the Reply is the template with what we can't do", a
   assert.equal(pipelineTrace.responder, null);
 });
 
-test("a message that doesn't escalate goes to the baseline responder", async () => {
-  const model = scriptedModel([[functionCall("submitTriage", triageDecision())], [functionCall("submitReply", VALID_REPLY)]]);
+test("triage sees every skill's id and description", async () => {
+  const model = scriptedModel([[functionCall("submitTriage", triageDecision({ escalate: true }))]]);
+  await respond("What does Heva cost?", "default", options(model.create));
+  const instructions = model.requests[0].instructions as string;
+  for (const { id } of loadSkillRegistry().index()) assert.match(instructions, new RegExp(`- ${id}: `));
+});
+
+test("a message that doesn't escalate is answered with the skills triage chose", async () => {
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["clinic-packages"] }))],
+    [functionCall("submitReply", VALID_REPLY)],
+  ]);
   const { reply, trace } = await respond("What does Dr. Hakan Clinic cost?", "default", options(model.create));
   assert.deepEqual(reply, VALID_REPLY);
   assert.equal(model.requests[1].model, "responder-model");
-  assert.match(model.requests[1].instructions as string, /^# IDENTITY/);
+  const system = model.requests[1].instructions as string;
+  assert.match(system, /# PIPELINE STATUS: PRE_CLINICAL_SENT/);
+  assert.match(system, /# SKILL: clinic-packages/);
+  const pipelineTrace = trace as PipelineTrace;
+  assert.equal(pipelineTrace.path, "skills");
+  assert.equal(pipelineTrace.fallback, null);
+  assert.deepEqual(pipelineTrace.modelCalls.map((call) => call.step), ["triage", "responder"]);
+  const responder = pipelineTrace.responder!;
+  assert.ok("skills" in responder);
+  assert.deepEqual(responder.skills, { chosen: ["clinic-packages"], loaded: [] });
+});
+
+test("with no skills chosen, the responder runs on the core and the Pipeline Status module", async () => {
+  const model = scriptedModel([[functionCall("submitTriage", triageDecision())], [functionCall("submitReply", VALID_REPLY)]]);
+  const { trace } = await respond("thanks!", "default", options(model.create));
+  const system = model.requests[1].instructions as string;
+  assert.match(system, /# PIPELINE STATUS: PRE_CLINICAL_SENT/);
+  assert.doesNotMatch(system, /# SKILL:/);
+  assert.equal((trace as PipelineTrace).path, "skills");
+});
+
+test("a skill that doesn't exist yet sends the message to the baseline responder", async () => {
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["clinic-packages", "other"] }))],
+    [functionCall("submitReply", VALID_REPLY)],
+  ]);
+  const { reply, trace } = await respond("Is the consultation free?", "default", options(model.create));
+  assert.deepEqual(reply, VALID_REPLY);
+  assert.match(model.requests[1].instructions as string, /^# IDENTITY\nYou are a patient concierge/);
   const pipelineTrace = trace as PipelineTrace;
   assert.equal(pipelineTrace.path, "baseline");
-  assert.deepEqual(pipelineTrace.modelCalls.map((call) => call.step), ["triage", "responder"]);
-  assert.match(pipelineTrace.responder!.userMessage, /What does Dr\. Hakan Clinic cost\?/);
+  assert.equal(pipelineTrace.fallback?.to, "baseline");
+  assert.match(pipelineTrace.fallback!.reason, /other/);
+});
+
+test("tool calls sit at the top of the trace whichever responder ran", async () => {
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["clinic-packages"] }))],
+    [functionCall("getClinicPackagesTool", { clinicName: "Heva" })],
+    [functionCall("submitReply", VALID_REPLY)],
+  ]);
+  const { trace } = await respond("What does Heva cost?", "default", options(model.create));
+  assert.deepEqual(trace.toolCalls?.map((call) => call.name), ["getClinicPackagesTool"]);
 });
 
 test("a failed model call fails with the trace so far", async () => {

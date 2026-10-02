@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  checkCalls,
   checkEscalate,
   checkReply,
   checkExcludes,
@@ -104,4 +105,22 @@ test("every Reply must match the schema and leave templateId null", () => {
 test("a phrase that is only a symbol, like \"$\", matches literally", () => {
   assert.equal(checkExcludes(withResponse("I'm getting a person for you."), ["$"]).ok, true);
   assert.equal(checkExcludes(withResponse("It's $500."), ["$"]).ok, false);
+});
+
+test("a calls check passes when a tool was called with the expected argument text", () => {
+  const calls = [
+    { name: "getAllClinicsTool", input: {}, output: {}, isError: false },
+    { name: "updateUserClinicPreferencesTool", input: { clinicSelection: { selectedClinicId: "abc-123" } }, output: {}, isError: false },
+  ];
+  assert.equal(checkCalls(calls, [{ tool: "updateUserClinicPreferencesTool", argsInclude: ["abc-123"] }]).ok, true);
+  assert.equal(checkCalls(calls, [{ tool: "getAllClinicsTool" }]).ok, true);
+});
+
+test("a calls check fails on a missing tool, missing argument text, or a call that errored", () => {
+  const calls = [{ name: "updateUserClinicPreferencesTool", input: { clinicSelection: {} }, output: "bad", isError: true }];
+  const missingTool = checkCalls(calls, [{ tool: "getPaymentLinkTool" }]);
+  assert.equal(missingTool.ok, false);
+  assert.match(missingTool.detail, /getPaymentLinkTool/);
+  assert.equal(checkCalls(calls, [{ tool: "updateUserClinicPreferencesTool", argsInclude: ["abc-123"] }]).ok, false);
+  assert.equal(checkCalls(calls, [{ tool: "updateUserClinicPreferencesTool" }]).ok, false);
 });

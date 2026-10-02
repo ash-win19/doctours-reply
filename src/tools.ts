@@ -119,6 +119,12 @@ export const TOOLS: FunctionTool[] = Object.entries(SPECS).map(([name, toolSpec]
   toolDefinition(name, toolSpec.description, toolSpec.input),
 );
 
+export const TOOL_NAMES = Object.keys(SPECS);
+
+export function toolsNamed(names: string[]): FunctionTool[] {
+  return TOOLS.filter((tool) => names.includes(tool.name));
+}
+
 export type ToolRun = { isError: false; output: unknown } | { isError: true; output: string };
 
 export function runTool(name: string, input: unknown): ToolRun {

@@ -1,0 +1,80 @@
+[
+  {
+    "id": "df-leaning-heva",
+    "group": "decision-funnel",
+    "rule": "Source, PRE_CLINICAL_SENT Step 1: a lean toward one clinic is saved as selectedClinicId this turn.",
+    "text": "I'm leaning toward Heva.",
+    "expect": {
+      "escalate": false,
+      "calls": [
+        {
+          "tool": "updateUserClinicPreferencesTool",
+          "argsInclude": [
+            "11111111-1111-4111-8111-111111111111",
+            "selectedClinicId"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "df-pay-from-assessment",
+    "group": "decision-funnel",
+    "rule": "Source, PRE_CLINICAL_SENT Step 0: they can book and pay the deposit right from their assessment, no call needed.",
+    "text": "Do I need a call before I can pay, or can I just book it myself?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "assessment",
+        "book"
+      ]
+    }
+  },
+  {
+    "id": "df-silver-payment-link",
+    "group": "decision-funnel",
+    "rule": "Source, PRE_CLINICAL_SENT Step 3: a decided Patient gets the Payment link, pasted as the last line.",
+    "text": "Let's do Heva's Silver package. How do I pay?",
+    "expect": {
+      "escalate": false,
+      "lastLineUrl": "https://www.doctours.com/payment/44444444-4444-4444-8444-444444444441",
+      "calls": [
+        {
+          "tool": "getPaymentLinkTool",
+          "argsInclude": [
+            "44444444-4444-4444-8444-444444444441"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "df-torn-clinics",
+    "group": "decision-funnel",
+    "rule": "Source, PRE_CLINICAL_SENT Step 1: torn between two clinics is saved as softClinicInterestIds.",
+    "text": "Honestly I'm torn between Heva and Dr. Hakan.",
+    "expect": {
+      "escalate": false,
+      "calls": [
+        {
+          "tool": "updateUserClinicPreferencesTool",
+          "argsInclude": [
+            "softClinicInterestIds"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "df-change-mind",
+    "group": "decision-funnel",
+    "rule": "Source, REVERSIBILITY: the deposit is refundable less a $25 cancellation fee until the lock-in date.",
+    "text": "What happens if I pay the deposit and then change my mind?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "$25"
+      ]
+    }
+  }
+]

@@ -1,8 +1,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import type { ToolCallTrace } from "../model-calls.ts";
 import type { Reply } from "../reply.ts";
 import {
+  checkCalls,
   checkEscalate,
   checkExcludes,
   checkIncludes,
@@ -26,6 +28,10 @@ const ExpectSchema = z
     noUrl: z.boolean().optional(),
     maxSentences: z.number().int().nonnegative().optional(),
     maxAttachments: z.number().int().nonnegative().optional(),
+    calls: z
+      .array(z.object({ tool: z.string().min(1), argsInclude: z.array(z.string()).optional() }).strict())
+      .min(1)
+      .optional(),
   })
   .strict();
 
@@ -90,7 +96,9 @@ export interface CaseOutcome {
   checks: NamedCheck[];
 }
 
-const CHECKS: { [Name in keyof Expect]-?: (reply: Reply, expected: NonNullable<Expect[Name]>) => CheckResult | null } = {
+type Check<Expected> = (reply: Reply, expected: Expected, toolCalls: ToolCallTrace[]) => CheckResult | null;
+
+const CHECKS: { [Name in keyof Expect]-?: Check<NonNullable<Expect[Name]>> } = {
   escalate: checkEscalate,
   includes: checkIncludes,
   excludes: checkExcludes,
@@ -98,16 +106,17 @@ const CHECKS: { [Name in keyof Expect]-?: (reply: Reply, expected: NonNullable<E
   noUrl: (reply, expected) => (expected ? checkNoUrl(reply) : null),
   maxSentences: checkMaxSentences,
   maxAttachments: checkMaxAttachments,
+  calls: (_reply, expected, toolCalls) => checkCalls(toolCalls, expected),
 };
 
 // Every Reply must match the schema with a null templateId, whatever the case expects.
-export function scoreCase(evalCase: EvalCase, reply: Reply): CaseOutcome {
+export function scoreCase(evalCase: EvalCase, reply: Reply, toolCalls: ToolCallTrace[] = []): CaseOutcome {
   const checks: NamedCheck[] = [{ name: "reply", ...checkReply(reply) }];
   for (const name of Object.keys(CHECKS) as (keyof Expect)[]) {
     const expected = evalCase.expect[name];
     if (expected === undefined) continue;
-    const check = CHECKS[name] as (reply: Reply, expected: unknown) => CheckResult | null;
-    const result = check(reply, expected);
+    const check = CHECKS[name] as Check<unknown>;
+    const result = check(reply, expected, toolCalls);
     if (result) checks.push({ name, ...result });
   }
   return { passed: checks.every((check) => check.ok), checks };

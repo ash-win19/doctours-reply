@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
-import { respondBaseline, MAX_TOOL_ROUNDS, type ResponderTrace } from "../src/responder.ts";
+import { respondBaseline } from "../src/responder.ts";
+import { MAX_TOOL_ROUNDS, type ResponderTrace } from "../src/tool-loop.ts";
 import { DraftingError, tokenUsage } from "../src/model-calls.ts";
 import { VALID_REPLY, scriptedModel, functionCall, toolNames } from "./fakes.ts";
 
