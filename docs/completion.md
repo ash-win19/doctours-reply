@@ -1,20 +1,20 @@
 # Completion checklist
 
-The combined implementation and offline review are complete. Live acceptance remains pending an API key, per Ashwin's request to continue offline. No PR has been merged. The 18 escalation decisions have been accepted by Ashwin.
+The combined implementation and offline review are complete. Live acceptance remains pending an API key, per Ashwin's request to continue offline. Ashwin subsequently authorized merging the full PR stack before live acceptance. The 18 escalation decisions have been accepted by Ashwin.
 
 ## Current work
 
 | Issues | Offline result | Remaining acceptance |
 |---|---|---|
-| AW-95 through AW-100 | Built, integration-reviewed, fixes pushed on AW-98. Escalation decisions accepted. | Live packet, escalation, skill, LEAD and reader evals; merge and ticket closeout. |
-| AW-101 | [Draft PR #9](https://github.com/ash-win19/doctours-reply/pull/9): explicit cache endpoints, opt-out, saved metrics and provenance implemented and reviewed. | Cache-hit evidence, measured trimming with no loss, final regression run. |
-| AW-102 | [Draft PR #10](https://github.com/ash-win19/doctours-reply/pull/10): seven-section README, original eight-problem mapping, examples and runtime reference reviewed. | Real final measurements, live five-message fresh-clone run, final review and merge. |
+| AW-95 through AW-100 | Built, integration-reviewed, fixes pushed on AW-98. Escalation decisions accepted. | Live packet, escalation, skill, LEAD and reader evals; ticket closeout. |
+| AW-101 | [PR #9](https://github.com/ash-win19/doctours-reply/pull/9): explicit cache endpoints, opt-out, saved metrics and provenance implemented and reviewed. | Cache-hit evidence, measured trimming with no loss, final regression run. |
+| AW-102 | [PR #10](https://github.com/ash-win19/doctours-reply/pull/10): seven-section README, original eight-problem mapping, examples and runtime reference reviewed. | Real final measurements, live five-message fresh-clone run and acceptance review. |
 
-The draft README labels missing results as pending. The only published live scorecard remains the historical five-case baseline. Do not substitute unit-test results or token estimates for live measurements.
+The README labels missing results as pending. The only published live scorecard remains the historical five-case baseline. Do not substitute unit-test results or token estimates for live measurements.
 
 ## Live runs
 
-Use the top of the stack. Add `OPENAI_API_KEY` to the shared `doctours-reply/.env`, or export it for a standalone clone. Do not put the key in the repository, a ticket, or a PR.
+Use `main` after the full stack is merged. Add `OPENAI_API_KEY` to the shared `doctours-reply/.env`, or export it for a standalone clone. Do not put the key in the repository, a ticket, or a PR.
 
 1. Run `npm test` and `npm run typecheck` after any new code change.
 2. Run `npm run eval -- --cases packet-check`. Require all five cases to pass. Inspect `heva-packages` specifically: if its assessment URL comes from history, repair must fetch grounding evidence before the final Reply.
@@ -51,7 +51,7 @@ In a fresh clone, run `npm ci`, configure the real key and execute the README co
 
 ## Merge and closeout
 
-After live acceptance, merge the original chain in this order:
+Ashwin explicitly authorized merging all eight PRs in sequence while live acceptance remains pending. This supersedes the earlier instruction to wait for live results before merging. Use this order:
 
 | PR | Ticket |
 |---|---|
@@ -61,10 +61,12 @@ After live acceptance, merge the original chain in this order:
 | #6 | AW-100 |
 | #7 | AW-99 |
 | #8 | AW-98, including integration fixes |
+| #9 | AW-101 |
+| #10 | AW-102 |
 
-Use merge commits and check the next PR's base after each merge. Retarget it to `main` if needed. Delete remote branches after dependent PRs are safely retargeted; active local worktrees can prevent local branch deletion. Verify final `main`, attach acceptance evidence in Linear, then mark these tickets Done.
+Use merge commits and check the next PR's base after each merge. Retarget it to `main` if needed. Delete remote branches after dependent PRs are safely retargeted; active local worktrees can prevent local branch deletion. Verify final `main` and record the merges in Linear. Keep tickets In Progress until their remaining acceptance criteria are met, then attach the evidence and mark them Done.
 
-Merge AW-101 and AW-102 only when their own pending criteria are satisfied. If trimming is explicitly cut, record AW-101 as deferred or canceled and explain it in the README. Do not mark unmeasured savings as completed work.
+Merge authorization does not establish live acceptance or measured savings. If trimming is explicitly cut, record AW-101 as deferred or canceled and explain it in the README. Do not mark unmeasured savings as completed work.
 
 ## Fresh-clone verification
 
