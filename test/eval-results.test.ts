@@ -35,8 +35,8 @@ test("loading a file that isn't a scorecard fails clearly", () => {
   assert.throws(() => loadScorecard("bad", dir), /not an eval results file/);
 });
 
-test("parses a run: mode defaults to baseline, case files can be picked", () => {
-  assert.deepEqual(parseEvalArgs([]), { kind: "run", mode: "baseline", caseFiles: [] });
+test("parses a run: mode defaults to default, case files can be picked", () => {
+  assert.deepEqual(parseEvalArgs([]), { kind: "run", mode: "default", caseFiles: [] });
   assert.deepEqual(parseEvalArgs(["--mode", "baseline", "--cases", "packet-check", "--cases", "more"]), {
     kind: "run",
     mode: "baseline",

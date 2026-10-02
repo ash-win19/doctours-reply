@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import type { EvalCase } from "../src/eval/cases.ts";
 import { buildScorecard, compareScorecards, formatScorecard, median } from "../src/eval/scorecard.ts";
 import type { MessageResult, RunOutput } from "../src/runner.ts";
-import type { ModelCallTrace, ResponderTrace } from "../src/responder.ts";
+import type { ModelCallTrace } from "../src/model-calls.ts";
+import type { ResponderTrace } from "../src/responder.ts";
 import { VALID_REPLY } from "./fakes.ts";
 import type { Reply } from "../src/reply.ts";
 
@@ -34,6 +35,7 @@ const cases: EvalCase[] = [
 // OpenAI's output_tokens already include reasoning, so the fake folds them in.
 function modelCall(prompt: number, output: number, reasoning: number): ModelCallTrace {
   return {
+    step: "responder",
     model: "fake-model",
     status: "completed",
     latencyMs: 10,

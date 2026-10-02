@@ -19,8 +19,8 @@ test("rejects an unknown mode", () => {
   assert.throws(() => parseCliArgs(["--mode", "fancy"]), /mode/);
 });
 
-test("requires a mode", () => {
-  assert.throws(() => parseCliArgs([]), /mode/);
+test("the default mode is used when none is given", () => {
+  assert.equal(parseCliArgs([]).mode, "default");
 });
 
 test("accepts an array of {id, text}", () => {

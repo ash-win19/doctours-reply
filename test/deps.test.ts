@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import OpenAI from "openai";
 import { toSetupError } from "../src/deps.ts";
-import { SetupError } from "../src/runner.ts";
+import { SetupError } from "../src/errors.ts";
 
 function apiError(status: number, message: string, code?: string) {
   return OpenAI.APIError.generate(status, { error: { message, code } }, message, new Headers());

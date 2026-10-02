@@ -1,4 +1,4 @@
-import { tokenUsage } from "../responder.ts";
+import { tokenUsage } from "../model-calls.ts";
 import type { RunOutput } from "../runner.ts";
 import { scoreCase, type EvalCase } from "./cases.ts";
 import type { NamedCheck } from "./checks.ts";

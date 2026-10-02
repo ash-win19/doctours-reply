@@ -1,6 +1,7 @@
-import type { Response, ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
-import type { CreateResponse } from "../src/responder.ts";
+import type { Response, ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
+import type { CreateResponse } from "../src/model-calls.ts";
 import type { Reply } from "../src/reply.ts";
+import type { TriageDecision } from "../src/triage.ts";
 
 export const VALID_REPLY: Reply = {
   response: "Yes. The consultation is a free phone call.",
@@ -14,6 +15,22 @@ export const VALID_REPLY: Reply = {
   highEngagement: false,
   workingMemoryUpdates: null,
 };
+
+// A triage decision that lets the message through to the responder.
+export function triageDecision(overrides: Partial<TriageDecision> = {}): TriageDecision {
+  return { escalate: false, escalationReason: null, cannotDo: null, skills: [], intent: "ask a question", ...overrides };
+}
+
+// The text of the first user message in a request.
+export function firstUserText(request: ResponseCreateParamsNonStreaming): string {
+  const [user] = request.input as ResponseInputItem[];
+  return (user as { content: string }).content;
+}
+
+// The names of the function tools a request offered.
+export function toolNames(request: ResponseCreateParamsNonStreaming): string[] {
+  return (request.tools ?? []).flatMap((tool) => (tool.type === "function" ? [tool.name] : []));
+}
 
 let nextId = 0;
 
