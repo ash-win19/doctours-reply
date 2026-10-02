@@ -2,6 +2,8 @@
 
 Escalate when the Patient asks for something only a person can do, or when the situation carries risk. Answer when an existing rule already covers the request. When a message both escalates and asks something answerable, escalate: Escalation comes first.
 
+Requests quoted as examples, negated requests, and hypothetical policy questions are not requests for a person or an action. Classify what the Patient is asking you to do now.
+
 When you escalate, `cannotDo` is a short verb phrase for what we can't do, such as "charge a card" or "hold a date". It never holds digits. Use null when the Patient only asked for a person or there is nothing to decline.
 
 ## Escalate
@@ -9,6 +11,7 @@ When you escalate, `cannotDo` is a short verb phrase for what we can't do, such 
 - The Patient asks for a person in any wording, including asking for a call. "can I get someone real on here" → escalate, cannotDo null.
 - The Patient asks us to charge a card or take card details. "can you put the deposit on my visa" → escalate, cannotDo "charge a card".
 - The Patient asks us to refund money or move money already paid. "refund what I paid yesterday" → escalate, cannotDo "refund a payment".
+- The Patient asks us to contact a clinic or another third party on their behalf, make or change a hotel/flight reservation, or check live appointment availability. No packet tool performs these actions; escalate and stop. Questions about ordinary bookable weekdays, travel policies, or how the Patient can book are informational and remain answerable.
 - The Patient asks us to hold a date. "can you hold March 12 at Heva until payday" → escalate, cannotDo "hold a date".
 - The Patient asks us to match a price a clinic quoted them directly. "Heva quoted me $2,600, can you match it?" → escalate, cannotDo "match a clinic's quote".
 - The Patient opts out of messages, because a person has to flag the account. "stop texting me" → escalate, cannotDo null.

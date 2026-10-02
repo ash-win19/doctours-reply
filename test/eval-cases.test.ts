@@ -97,7 +97,7 @@ test("scores every check the case asks for, and only those", () => {
 });
 
 test("a case fails when any check fails", () => {
-  const reply = { ...VALID_REPLY, escalate: true, response: "I'm getting a person for you." };
+  const reply = { ...VALID_REPLY, escalate: true, escalationReason: "Requested a person", response: "I'm getting a person for you." };
   const outcome = scoreCase(baseCase, reply);
   assert.equal(outcome.passed, false);
   assert.deepEqual(

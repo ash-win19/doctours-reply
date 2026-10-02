@@ -36,11 +36,12 @@ test("loading a file that isn't a scorecard fails clearly", () => {
 });
 
 test("parses a run: mode defaults to default, case files can be picked", () => {
-  assert.deepEqual(parseEvalArgs([]), { kind: "run", mode: "default", caseFiles: [] });
+  assert.deepEqual(parseEvalArgs([]), { kind: "run", mode: "default", caseFiles: [], repeat: 1 });
   assert.deepEqual(parseEvalArgs(["--mode", "baseline", "--cases", "packet-check", "--cases", "more"]), {
     kind: "run",
     mode: "baseline",
     caseFiles: ["packet-check", "more"],
+    repeat: 1,
   });
 });
 
@@ -51,4 +52,10 @@ test("parses a comparison of two runs", () => {
 
 test("rejects an unknown mode", () => {
   assert.throws(() => parseEvalArgs(["--mode", "fancy"]), /mode/);
+});
+
+
+test("repeat accepts a bounded count and rejects invalid values", () => {
+  assert.deepEqual(parseEvalArgs(["--repeat", "3"]), { kind: "run", mode: "default", caseFiles: [], repeat: 3 });
+  for (const value of ["0", "-1", "1.5", "11", "many"]) assert.throws(() => parseEvalArgs(["--repeat", value]), /repeat/);
 });

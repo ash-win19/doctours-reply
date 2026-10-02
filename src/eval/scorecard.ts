@@ -3,6 +3,8 @@ import { skillsRun, type PipelineTrace } from "../pipeline.ts";
 import type { RunOutput } from "../runner.ts";
 import { scoreCase, type EvalCase } from "./cases.ts";
 import type { NamedCheck } from "./checks.ts";
+import type { Reply } from "../reply.ts";
+import { VALIDATION_FAILED } from "../escalation.ts";
 
 export interface CaseScore {
   id: string;
@@ -11,6 +13,8 @@ export interface CaseScore {
   passed: boolean;
   checks: NamedCheck[];
   response: string;
+  // Complete output for reproducible demos; older scorecards only saved response/escalate.
+  reply?: Reply;
   escalate: boolean;
   inputTokens: number;
   outputTokens: number;
@@ -78,9 +82,10 @@ export function buildScorecard({
     const cachedInputTokens = sum((trace?.modelCalls ?? []).map(({ usage }) => usage?.input_tokens_details.cached_tokens ?? 0));
     const cacheWriteInputTokens = sum((trace?.modelCalls ?? []).map(({ usage }) => usage?.input_tokens_details.cache_write_tokens ?? 0));
     // A fallback Reply is not the model's work, so the case fails however its checks would score.
+    const failure = error ?? (reply.escalationReason === VALIDATION_FAILED ? VALIDATION_FAILED : null);
     const { passed, checks } =
-      error !== null
-        ? { passed: false, checks: [{ name: "drafted", ok: false, detail: error }] }
+      failure !== null
+        ? { passed: false, checks: [{ name: "drafted", ok: false, detail: failure }] }
         : scoreCase(evalCase, reply, { toolCalls: trace?.toolCalls ?? [], skills: skillsRun(trace), mode });
     return {
       id: evalCase.id,
@@ -89,6 +94,7 @@ export function buildScorecard({
       passed,
       checks,
       response: reply.response,
+      reply,
       escalate: reply.escalate,
       ...tokenUsage(trace),
       wallTimeMs,

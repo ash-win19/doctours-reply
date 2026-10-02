@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   checkCalls,
+  checkAttachmentEvidence,
   checkLeadsWith,
   checkSkills,
   checkFields,
@@ -174,4 +175,27 @@ test("a leadsWith check looks only at the first sentence, ignoring URLs", () => 
   const later = checkLeadsWith(reply, ["Istanbul Airport"]);
   assert.equal(later.ok, false);
   assert.match(later.detail, /first sentence is "Fly into Sabiha Gökçen \(SAW\)"/);
+});
+
+
+test("Reply contract rejects inconsistent fields, empty text, and misplaced links", () => {
+  for (const changed of [
+    { response: " " },
+    { escalate: true, escalationReason: null },
+    { escalationReason: "unnecessary" },
+    { response: "See https://example.invalid now." },
+    { escalate: true, escalationReason: "Needs help", response: "Getting help. Anything else?" },
+    { attachmentUrls: ["a", "b", "c", "d"] },
+    { shouldFollowUp: false, followUpTiming: "tomorrow" },
+  ]) assert.equal(checkReply({ ...VALID_REPLY, ...changed }).ok, false, JSON.stringify(changed));
+});
+
+test("attachment evidence ignores failed tools and model summaries", () => {
+  const url = "https://example.invalid/photo.jpg";
+  const reply = { ...VALID_REPLY, attachmentUrls: [url] };
+  const call = { name: "getPatientImagesTool", input: {}, output: { photos: [url] }, isError: false };
+  assert.equal(checkAttachmentEvidence(reply, [call]).ok, true);
+  assert.equal(checkAttachmentEvidence(reply, [{ ...call, isError: true }]).ok, false);
+  assert.equal(checkAttachmentEvidence(reply, [{ ...call, name: "askCallHistory" }]).ok, false);
+  assert.equal(checkAttachmentEvidence(reply, []).ok, false);
 });

@@ -1,3 +1,4 @@
+import { escalationReply, VALIDATION_FAILED } from "./escalation.ts";
 import type { Reply } from "./reply.ts";
 import { redactCardData } from "./guards.ts";
 import type { SubmitOutcome } from "./tool-loop.ts";
@@ -84,7 +85,7 @@ function isAllowedUrl(url: string, evidence: TurnEvidence): boolean {
   return slug !== undefined && evidence.slugs.has(slug);
 }
 
-export type CheckName = "unknown URLs" | "amounts" | "banned phrases" | "attachments";
+export type CheckName = "unknown URLs" | "amounts" | "banned phrases" | "attachments" | "response";
 
 export interface Failure {
   name: CheckName;
@@ -286,7 +287,7 @@ export function checkAttachments(reply: Reply, evidence: TurnEvidence): NamedChe
   return { name: "attachments", ok: problems.length === 0, detail: problems.length ? problems.join("; ") : "attachments are fine" };
 }
 
-// Sanitize before a draft can become bestSoFar. Every repair/fallback path must obey
+// Sanitize before validation. Every delivered Reply must obey
 // the attachment contract even if the model never produces a better Reply.
 function fixAttachments(reply: Reply, evidence: TurnEvidence): FixResult {
   const check = checkAttachments(reply, evidence);
@@ -315,7 +316,10 @@ const FIXES: ((reply: Reply, evidence: TurnEvidence) => FixResult)[] = [
   fixAttachments,
 ];
 
-const CHECKS: ((reply: Reply, evidence: TurnEvidence) => NamedCheck)[] = [checkAmounts, checkBannedPhrases, checkAttachments];
+const CHECKS: ((reply: Reply, evidence: TurnEvidence) => NamedCheck)[] = [
+  checkAmounts, checkBannedPhrases, checkAttachments,
+  (reply) => ({ name: "response", ok: reply.response.trim().length > 0, detail: reply.response.trim() ? "response is nonempty" : "response is empty" }),
+];
 
 // Code fixes first, then the checks that need the model to rewrite. Never changes `escalate`.
 export function validate(reply: Reply, evidence: TurnEvidence): ValidationResult {
@@ -335,10 +339,10 @@ export function validate(reply: Reply, evidence: TurnEvidence): ValidationResult
 
 export interface ValidationTrace {
   // One run per submitted Reply: the code fixes applied and every check's result after them.
-  runs: { fixes: string[]; checks: NamedCheck[] }[];
+  runs: { fixes: string[]; checks: NamedCheck[]; failures: Failure[] }[];
   repairRan: boolean;
   // Which version shipped once validation finished.
-  shipped: "first" | "repaired" | null;
+  shipped: "first" | "repaired" | "escalation" | null;
 }
 
 export function emptyValidationTrace(): ValidationTrace {
@@ -352,27 +356,28 @@ function repairRequest(failures: Failure[]): string {
   ].join("\n");
 }
 
-// Validates each submitted Reply. While anything still fails after the code fixes, the model gets one repair turn,
-// and then the version with fewer failures ships. Failures that remain stay in the trace. An Escalation is never
-// validated, and a repair that changes `escalate` is not taken.
+// Only a passing Reply can ship. One bounded repair may fetch fresh evidence; if it
+// still fails or never submits, an Operator takes over. Escalation always ends the turn.
 export function validatingSubmit(evidence: TurnEvidence, trace: ValidationTrace): (reply: Reply) => SubmitOutcome {
-  let first: ValidationResult | null = null;
+  let repairing = false;
+  const fallback = (): Reply => {
+    trace.shipped = "escalation";
+    return escalationReply(VALIDATION_FAILED, null);
+  };
   return (submitted) => {
-    if (first) {
-      const result = validate(submitted, evidence);
-      trace.runs.push({ fixes: result.fixes, checks: result.checks });
-      const repairedIsBetter =
-        submitted.escalate === first.reply.escalate && result.failures.length <= first.failures.length;
-      trace.shipped = repairedIsBetter ? "repaired" : "first";
-      return { reply: repairedIsBetter ? result.reply : first.reply };
+    if (submitted.escalate) {
+      trace.shipped = "escalation";
+      return { reply: escalationReply(submitted.escalationReason?.trim() || "Responder requested an Operator", null) };
     }
-    if (submitted.escalate) return { reply: submitted };
     const result = validate(submitted, evidence);
-    trace.runs.push({ fixes: result.fixes, checks: result.checks });
-    trace.shipped = "first";
-    if (result.failures.length === 0) return { reply: result.reply };
-    first = result;
+    trace.runs.push({ fixes: result.fixes, checks: result.checks, failures: result.failures });
+    if (result.failures.length === 0) {
+      trace.shipped = repairing ? "repaired" : "first";
+      return { reply: result.reply };
+    }
+    if (repairing) return { reply: fallback() };
+    repairing = true;
     trace.repairRan = true;
-    return { repair: repairRequest(result.failures), bestSoFar: result.reply };
+    return { repair: repairRequest(result.failures), fallback };
   };
 }

@@ -30,12 +30,15 @@ export interface RunnerDeps {
 }
 
 function traceFileNames(messages: HumanMessage[]): string[] {
-  const used = new Map<string, number>();
+  const used = new Set<string>();
   return messages.map(({ id }) => {
-    const base = id.replace(/[^\w.-]/g, "_") || "message";
-    const count = (used.get(base) ?? 0) + 1;
-    used.set(base, count);
-    return `${count === 1 ? base : `${base}-${count}`}.json`;
+    // Bound the name for filesystem limits; reserve case-insensitively for macOS/Windows too.
+    const base = id.replace(/[^\w.-]/g, "_").slice(0, 160) || "message";
+    let file = `${base}.json`;
+    let suffix = 2;
+    while (used.has(file.toLowerCase())) file = `${base}-${suffix++}.json`;
+    used.add(file.toLowerCase());
+    return file;
   });
 }
 

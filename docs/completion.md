@@ -18,9 +18,10 @@ Use `main` after the full stack is merged. Add `OPENAI_API_KEY` to the shared `d
 
 1. Run `npm test` and `npm run typecheck` after any new code change.
 2. Run `npm run eval -- --cases packet-check`. Require all five cases to pass. Inspect `heva-packages` specifically: if its assessment URL comes from history, repair must fetch grounding evidence before the final Reply.
-3. Compare that packet-only run with `npm run eval -- --compare 2026-10-02T00-31-24.474Z PACKET_DEFAULT_RUN_ID`.
-4. Run `npm run eval -- --mode baseline` and `npm run eval` over all 78 current cases. Then run `npm run eval -- --compare FULL_BASELINE_RUN_ID FULL_DEFAULT_RUN_ID`. These must use the same case/context hash.
-5. Inspect every failure and any baseline case that regressed. Fix the cause, rerun its case file, then rerun the full suite on the final code.
+3. Rerun the packet baseline with `npm run eval -- --mode baseline --cases packet-check`, then compare with `npm run eval -- --compare PACKET_BASELINE_RUN_ID PACKET_DEFAULT_RUN_ID`. The historical run predates stronger checks.
+4. Run `npm run eval -- --mode baseline` and `npm run eval` over all 96 current cases. Then run `npm run eval -- --compare FULL_BASELINE_RUN_ID FULL_DEFAULT_RUN_ID`. These must use the same case/context hash.
+5. Run `npm run eval -- --cases escalation --cases generalization --repeat 3` and inspect every repetition.
+6. Inspect every failure and any baseline case that regressed. Fix the cause, rerun its case file, then rerun the full suite on the final code.
 
 The eval command returns a nonzero exit if any case fails, including expected baseline failures. A saved scorecard still exists when the run completed. Distinguish that from setup failures that stop before a scorecard is written.
 

@@ -37,13 +37,16 @@ npm test
 npm run typecheck
 npm run eval
 npm run eval -- --mode baseline
+npm run eval -- --cases generalization --cases escalation --repeat 3
+npm run demo                    # Real five-message CLI run; requires a key.
+npm run demo -- --offline       # Guard-only demo; no model calls or real key.
 ```
 
 A context file is validated JSON. Missing fields inherit the packet values, except omitted collection status is derived from the supplied intake state. Its `toolOverrides` map supplies Patient-specific tool results. Override any packet result that would contradict the new Patient. See [Patient context and fixtures](docs/runtime.md#patient-context).
 
 The packet tools are fixture functions, not live clinic or payment integrations. Each input message runs independently against its selected context. Returned `workingMemoryUpdates` do not update subsequent messages automatically. Up to four messages run concurrently.
 
-Each message writes `traces/<runId>/<messageId>.json`. Failed drafting escalates that message after SDK retries; configuration failures such as a missing or rejected key stop the run with a nonzero exit. See [runtime details](docs/runtime.md) for retries, tools, skills and trace fields.
+Each message writes a trace under `traces/<runId>/`. Filenames use bounded, sanitized message ids, with suffixes reserved case-insensitively to prevent overwrites. Failed drafting escalates that message after SDK retries; configuration failures such as a missing or rejected key stop the run with a nonzero exit. See [runtime details](docs/runtime.md) for retries, tools, skills and trace fields.
 
 ## Architecture
 
@@ -66,7 +69,7 @@ flowchart TD
     Baseline -->|escalation| Escalation
     Validator -->|one bounded repair if needed| Repair[Same responder with failure details]
     Repair --> Validator
-    Validator -->|best checked version| Output[Reply JSON and trace]
+    Validator -->|passing Reply or escalation| Output[Reply JSON and trace]
     Escalation --> Output
 ```
 
@@ -82,7 +85,7 @@ The trace records the path, triage decision, initially resolved and later loaded
 |---|---|---|
 | Guard escalation | Code only | Zero model tokens. |
 | Triage | Escalation policy, skill index, state card, four recent chat turns, incoming message | API measurement pending. |
-| Responder core | Voice, grounding, links, precedence, Reply fields, skill index, state card, memory and recent chat | Packet fixture has 11,237 characters. Existing budget test estimates about 2,809 tokens; exact model-token verification is pending. |
+| Responder core | Voice, grounding, links, precedence, Reply fields, skill index, state card, memory and recent chat | Packet fixture has 11,545 characters. Existing budget test estimates about 2,886 tokens; exact model-token verification is pending. |
 | Pipeline Status module | One module chosen by code | PRE_CLINICAL_SENT has 1,592 characters; model-token measurement pending. |
 | Skills and tools | Chosen skills, required dependencies, and their tool schemas | Varies by message. Saved evals now report median loaded skills and total input tokens. |
 | Call-history reader | Reader rules, question and full call records | Only when requested; usage is recorded under the parent message. |
@@ -96,7 +99,7 @@ The responder has explicit cache endpoints before Patient context, after the ful
 
 [ADR 0002](docs/adr/0002-escalation-boundary.md) defines the boundary. Requests for a person or call, card charging, moving or refunding paid money, holding dates, matching direct quotes, opt-outs, legal threats, and repeated requests for clinic contact details escalate. Covered informational questions continue to a Reply.
 
-Guards catch card-like digit runs and explicit person requests without a model call. Triage handles paraphrases before any sales reply exists. Code renders either `I'm getting a person for you.` or `I can't {cannotDo}. I'm getting a person for you.` It fills the escalation fields and stops. A responder can also escalate mid-turn; default-mode fallback escalations use the same builder. Repair cannot change an existing escalation decision.
+Guards catch card-like digit runs and explicit person requests without a model call. Triage handles paraphrases before any sales reply exists. Code always renders `I'm getting a person for you.` It fills the escalation fields and stops. A responder can also escalate mid-turn; default-mode fallback escalations use the same builder. Repair can escalate when it discovers a need for an Operator. An escalation ends the turn immediately; it can never become a sales Reply.
 
 Default mode redacts card-like text in incoming messages, history and tool results while preserving complete UUIDs. Baseline mode retains the original prompt behavior for comparison. Ashwin reviewed and accepted the [18 escalation decisions](docs/escalation-review.md).
 
@@ -113,18 +116,19 @@ The historical run is [2026-10-02T00-31-24.474Z](evals/results/2026-10-02T00-31-
 | Median input tokens per message | 114,455 | Pending |
 | Median latency per message | 14.035 seconds | Pending |
 
-The baseline omitted Heva's deposits and assessment link, omitted the consultation link, and did not escalate the card-charge request. A matched full-suite comparison is also pending. The current suite has 78 cases in 13 files. Do not compare its totals with the five-case historical run.
+The baseline omitted Heva's deposits and assessment link, omitted the consultation link, and did not escalate the card-charge request. A matched full-suite comparison is also pending. The current suite has 96 cases in 14 files. Do not compare its totals with the five-case historical run.
 
 ```sh
+npm run eval -- --mode baseline --cases packet-check
 npm run eval -- --cases packet-check
-npm run eval -- --compare 2026-10-02T00-31-24.474Z <packetDefaultRunId>
+npm run eval -- --compare <packetBaselineRunId> <packetDefaultRunId>
 
 npm run eval -- --mode baseline
 npm run eval
 npm run eval -- --compare <fullBaselineRunId> <fullDefaultRunId>
 ```
 
-Replace the angle-bracket arguments with saved run ids. New scorecards record commit, case/context hash, token and cache usage, median input, skill counts, fallbacks and repairs. Baseline scoring skips skill-selection checks and requires `getFullCallsTool` where default mode requires `askCallHistory`. All other Reply and tool-call checks apply to both modes.
+Replace the angle-bracket arguments with saved run ids. Rerun the baseline: the current checks now verify package-to-price/deposit attribution and the stricter one-sentence escalation requirement, so the historical scorecard is not a matched comparison. New scorecards record commit, case/context hash, token and cache usage, median input, skill counts, fallbacks and repairs. Baseline scoring skips skill-selection checks and requires `getFullCallsTool` where default mode requires `askCallHistory`. All other Reply and tool-call checks apply to both modes. Package checks bind each price and deposit to its named package, rather than merely checking that all the numbers appear. The checker is a conservative text heuristic; ambiguous grouped wording needs human review. New scorecards retain the complete Reply as well as the scored checks.
 
 The following rows follow the [source brief's eight concerns](docs/brief.md) in order.
 
@@ -143,8 +147,8 @@ The following rows follow the [source brief's eight concerns](docs/brief.md) in 
 
 Triage adds a model round trip. Scoped tools save context but changing the tool list can lose cache reuse. The core includes Patient state and history, so later cache endpoints depend on that data staying stable. The separate reader adds latency only for call questions. Unknown topics retain a traced baseline fallback; the supported eval suite must have zero such fallbacks before acceptance.
 
-The validator deterministically fixes formatting, field consistency and ungrounded URLs. It filters attachments to URLs returned by tools this turn and keeps at most three, including when repair fails. It then permits one bounded repair and ships the version with fewer remaining failures. Persistent price or phrase failures remain visible in the trace; they do not automatically escalate. This is a deliberate limitation, not a guarantee that every delivered Reply passes every check.
+The validator deterministically fixes formatting, field consistency and ungrounded URLs. It filters attachments to URLs returned by tools this turn and keeps at most three, including when repair fails. It then permits one bounded repair. A Reply ships only when every validation check passes; persistent failures, malformed repairs and exhausted repair rounds produce a fixed escalation. Model-requested escalations during repair are honored. The checks catch known failure patterns, not every possible factual error; live evaluation and trace review are still necessary.
 
 No skill text has been trimmed because each trim requires a live comparison. AW-101's caching and measurement code is implemented; measured savings and the trim pass remain pending. The call-history reader was retained. The model provider is OpenAI, including the small-model roles that earlier planning called Haiku. Reviewer invitations were excluded at Ashwin's request.
 
-Complete the [live acceptance and handoff checklist](docs/completion.md), publish the selected scorecards, fill the pending measurements above, and run all five packet messages from a fresh clone. The [integration review](docs/integration-review.md) records the defects found and fixed across the original stack. Ashwin authorized merging the stack before live acceptance; Linear issues remain In Progress until their pending criteria are satisfied.
+Complete the [live acceptance and handoff checklist](docs/completion.md), publish the selected scorecards, fill the pending measurements above, and run all five packet messages from a fresh clone. See the [submission plan and evidence guide](docs/submission.md) for the current fixes, demo artifacts and live acceptance commands. The [integration review](docs/integration-review.md) records the defects found and fixed across the original stack. Ashwin authorized merging the stack before live acceptance; Linear issues remain In Progress until their pending criteria are satisfied.

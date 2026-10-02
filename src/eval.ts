@@ -10,7 +10,7 @@ import { parseMode, type Mode } from "./pipeline.ts";
 import { runMessages } from "./runner.ts";
 
 export type EvalArgs =
-  | { kind: "run"; mode: Mode; caseFiles: string[] }
+  | { kind: "run"; mode: Mode; caseFiles: string[]; repeat: number }
   | { kind: "compare"; before: string; after: string };
 
 export function parseEvalArgs(argv: string[]): EvalArgs {
@@ -20,6 +20,7 @@ export function parseEvalArgs(argv: string[]): EvalArgs {
       mode: { type: "string" },
       cases: { type: "string", multiple: true, default: [] },
       compare: { type: "boolean", default: false },
+      repeat: { type: "string", default: "1" },
     },
     allowPositionals: true,
   });
@@ -28,7 +29,9 @@ export function parseEvalArgs(argv: string[]): EvalArgs {
     return { kind: "compare", before: positionals[0], after: positionals[1] };
   }
   if (positionals.length > 0) throw new Error(`Unexpected argument: ${positionals[0]}`);
-  return { kind: "run", mode: parseMode(values.mode), caseFiles: values.cases };
+  const repeat = Number(values.repeat);
+  if (!Number.isInteger(repeat) || repeat < 1 || repeat > 10) throw new Error("--repeat must be an integer from 1 to 10");
+  return { kind: "run", mode: parseMode(values.mode), caseFiles: values.cases, repeat };
 }
 
 // Runs eval cases through the same runner the CLI uses, prints a scorecard and saves it for comparison.
@@ -50,13 +53,18 @@ async function main(): Promise<void> {
     suiteHash: createHash("sha256").update(JSON.stringify({ cases, messages })).digest("hex"),
     promptCache: args.mode === "default" && deps.promptCache !== false,
   };
-  const run = await runMessages(messages, args.mode, deps);
-  const model = args.mode === "baseline" ? deps.responderModel : `${deps.responderModel}, triage ${deps.triageModel}`;
-  const card = buildScorecard({ cases, run, mode: args.mode, model });
-  card.provenance = provenance;
-  log(`\n${formatScorecard(card)}`);
-  log(`\nSaved results to ${saveScorecard(card)}`);
-  process.exitCode = card.totals.passed === card.totals.cases ? 0 : 1;
+  let allPassed = true;
+  for (let repetition = 1; repetition <= args.repeat; repetition++) {
+    log(`Evaluation repetition ${repetition}/${args.repeat}`);
+    const run = await runMessages(messages, args.mode, deps);
+    const model = args.mode === "baseline" ? deps.responderModel : `${deps.responderModel}, triage ${deps.triageModel}`;
+    const card = buildScorecard({ cases, run, mode: args.mode, model });
+    card.provenance = provenance;
+    log(`\n${formatScorecard(card)}`);
+    log(`\nSaved results to ${saveScorecard(card)}`);
+    allPassed = allPassed && card.totals.passed === card.totals.cases;
+  }
+  process.exitCode = allPassed ? 0 : 1;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

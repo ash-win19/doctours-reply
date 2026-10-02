@@ -187,3 +187,19 @@ test("each message can carry its own Patient context", async () => {
   assert.match(triageCard("packet"), /Pipeline Status: PRE_CLINICAL_SENT/);
   assert.match(triageCard("new-patient"), /Pipeline Status: LEAD/);
 });
+
+
+test("trace suffixes cannot overwrite another input's trace", async () => {
+  for (const ids of [["a", "a", "a-2"], ["a/", "a?", "a_-2"], ["A", "a"], ["", "message", "message-2"]]) {
+    const deps = setup();
+    const messages = ids.map((id, index) => ({ id, text: `message ${index}`, context: PACKET_CONTEXT }));
+    const model = echoModel(() => 1);
+    const { runId, results } = await runMessages(messages, "baseline", { ...deps, create: model.create, responderModel: "fake" });
+    const files = readdirSync(join(deps.traceRoot, runId));
+    assert.equal(files.length, ids.length);
+    assert.equal(new Set(files.map((file) => file.toLowerCase())).size, ids.length);
+    const texts = files.map((file) => JSON.parse(readFileSync(join(deps.traceRoot, runId, file), "utf8")).input.text).sort();
+    assert.deepEqual(texts, messages.map(({ text }) => text).sort());
+    assert.equal(results.length, ids.length);
+  }
+});

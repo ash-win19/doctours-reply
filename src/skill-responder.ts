@@ -119,6 +119,7 @@ export async function respondWithSkills(
     if (name === ESCALATE) {
       const parsed = EscalateInput.safeParse(input);
       if (!parsed.success) return { isError: true, output: `${ESCALATE} takes { reason, cannotDo }` };
+      trace.validation.shipped = "escalation";
       return { reply: escalationReply(parsed.data.reason, parsed.data.cannotDo) };
     }
     if (!allowedTools().includes(name)) {
@@ -144,8 +145,8 @@ export async function respondWithSkills(
           escalateTool,
         ],
         callTool,
-        // Only the escalate tool escalates, so a submitted Reply never does.
-        onSubmit: (submitted) => submit({ ...submitted, escalate: false, escalationReason: null }),
+        // Honor a handoff whether it arrives through escalate or submitReply.
+        onSubmit: submit,
       },
       options,
     );

@@ -10,7 +10,8 @@
     "respond": "node --env-file-if-exists=.env --import tsx src/cli.ts",
     "eval": "node --env-file-if-exists=.env --import tsx src/eval.ts",
     "test": "node --import tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "demo": "node --env-file-if-exists=.env --import tsx scripts/demo.ts"
   },
   "dependencies": {
     "openai": "^7.27.0",
