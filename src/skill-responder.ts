@@ -11,12 +11,19 @@ import {
 import type { Reply } from "./reply.ts";
 import type { Skill, SkillRegistry } from "./skills.ts";
 import { runToolLoop, type ResponderTrace, type ToolOutcome } from "./tool-loop.ts";
-import { runTool, toolDefinition, toolsNamed } from "./tools.ts";
-import { collectEvidence, emptyEvidence, emptyValidationTrace, validatingSubmit } from "./validator.ts";
+import { toolDefinition, toolsNamed } from "./tools.ts";
+import {
+  emptyEvidence,
+  emptyValidationTrace,
+  runToolForEvidence,
+  validatingSubmit,
+  type ValidationTrace,
+} from "./validator.ts";
 
 export interface SkillResponderTrace extends ResponderTrace {
   // Skills triage chose, and skills the responder loaded mid-turn with loadSkill.
   skills: { chosen: string[]; loaded: string[] };
+  validation: ValidationTrace;
 }
 
 const LOAD_SKILL = "loadSkill";
@@ -93,12 +100,10 @@ export async function respondWithSkills(
     if (!allowedTools().includes(name)) {
       return { isError: true, output: `${name} isn't available. Load the skill that has it with ${LOAD_SKILL}.` };
     }
-    const run = runTool(name, input);
-    if (!run.isError) collectEvidence(evidence, run.output);
-    return run;
+    return runToolForEvidence(name, input, evidence);
   }
 
-  const submit = validatingSubmit(evidence, trace.validation!);
+  const submit = validatingSubmit(evidence, trace.validation);
 
   try {
     const reply = await runToolLoop(
@@ -107,8 +112,7 @@ export async function respondWithSkills(
         tools: () => [...toolsNamed(allowedTools()), loadSkillTool, escalateTool],
         callTool,
         // Only the escalate tool escalates, so a submitted Reply never does.
-        onSubmit: (submitted) =>
-          submit({ ...submitted, templateId: null, escalate: false, escalationReason: null }),
+        onSubmit: (submitted) => submit({ ...submitted, escalate: false, escalationReason: null }),
       },
       options,
     );

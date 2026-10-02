@@ -1,19 +1,21 @@
 import type { Reply } from "./reply.ts";
 import type { SubmitOutcome } from "./tool-loop.ts";
+import { runTool, type ToolRun } from "./tools.ts";
 
 // What this turn's tool results said, collected as they arrive. A Reply may only repeat URLs and amounts found here.
 export interface TurnEvidence {
   toolUrls: Set<string>;
-  // Every tool result this turn, as JSON text.
-  toolText: string;
+  // Money values in this turn's tool results: numbers under a price, amount, deposit, fee or cost key, and numbers
+  // written next to "$" or "USD" in text. Ids and counts never count.
+  amounts: Set<number>;
   // Clinic slugs a tool returned, which build Doctours clinic pages.
   slugs: Set<string>;
-  // Card digit runs in the Patient's raw message, which a Reply must never repeat.
+  // Card digit runs the guards found in the Patient's raw message, which a Reply must never repeat.
   inputCardDigits: string[];
 }
 
 export function emptyEvidence(inputCardDigits: string[] = []): TurnEvidence {
-  return { toolUrls: new Set(), toolText: "", slugs: new Set(), inputCardDigits };
+  return { toolUrls: new Set(), amounts: new Set(), slugs: new Set(), inputCardDigits };
 }
 
 const URL_PATTERN = /https?:\/\/[^\s<>()"'`]+/g;
@@ -27,52 +29,89 @@ function urlsIn(text: string): string[] {
   return (text.match(URL_PATTERN) ?? []).map(cleanUrl);
 }
 
-function collectSlugs(value: unknown, slugs: Set<string>): void {
-  if (Array.isArray(value)) value.forEach((item) => collectSlugs(item, slugs));
+const MONEY_KEY = /price|amount|deposit|fee|cost|balance|total/i;
+const AMOUNT_PATTERN = /\$\s?(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s?USD\b|\bUSD\s?(\d[\d,]*(?:\.\d+)?)/gi;
+
+function amountsIn(text: string): number[] {
+  return [...text.matchAll(AMOUNT_PATTERN)].map((match) => Number((match[1] ?? match[2] ?? match[3]).replaceAll(",", "")));
+}
+
+// Walks a tool result for URLs, money values and slugs.
+function walk(value: unknown, key: string, evidence: TurnEvidence): void {
+  if (Array.isArray(value)) value.forEach((item) => walk(item, key, evidence));
   else if (value && typeof value === "object") {
-    for (const [key, item] of Object.entries(value)) {
-      if (key === "slug" && typeof item === "string") slugs.add(item);
-      else collectSlugs(item, slugs);
-    }
+    for (const [childKey, item] of Object.entries(value)) walk(item, childKey, evidence);
+  } else if (typeof value === "number") {
+    if (MONEY_KEY.test(key)) evidence.amounts.add(value);
+  } else if (typeof value === "string") {
+    if (key === "slug") evidence.slugs.add(value);
+    for (const url of urlsIn(value)) evidence.toolUrls.add(url);
+    for (const amount of amountsIn(value)) evidence.amounts.add(amount);
   }
 }
 
 // Adds one tool result to the turn's evidence.
 export function collectEvidence(evidence: TurnEvidence, output: unknown): void {
-  const text = typeof output === "string" ? output : JSON.stringify(output ?? null);
-  evidence.toolText += `${text}\n`;
-  for (const url of urlsIn(text)) evidence.toolUrls.add(url);
-  collectSlugs(output, evidence.slugs);
+  walk(output, "", evidence);
 }
 
-// Links a Reply may carry without a tool returning them this turn.
-const STATIC_URLS = ["https://www.doctours.com/consultation", "https://www.doctours.com/image-upload"];
+// Runs a tool, adding a successful result to the evidence when the Reply will be validated.
+export function runToolForEvidence(name: string, input: unknown, evidence: TurnEvidence | null): ToolRun {
+  const run = runTool(name, input);
+  if (evidence && !run.isError) collectEvidence(evidence, run.output);
+  return run;
+}
+
+// Links a Reply may carry without a tool returning them this turn. The core prompt lists the same ones.
+export const STATIC_URLS = [
+  { url: "https://www.doctours.com/consultation", use: "book the free consultation" },
+  { url: "https://www.doctours.com/image-upload", use: "intake photos" },
+];
+export const CLINIC_PAGE_TEMPLATE = "https://www.doctours.com/clinic/{slug}";
 const CLINIC_PAGE = /^https:\/\/www\.doctours\.com\/clinic\/([a-z0-9-]+)\/?$/;
+export const MAX_ATTACHMENTS = 3;
 
 function isAllowedUrl(url: string, evidence: TurnEvidence): boolean {
-  if (evidence.toolUrls.has(url) || STATIC_URLS.includes(url.replace(/\/$/, ""))) return true;
+  if (evidence.toolUrls.has(url) || STATIC_URLS.some((link) => link.url === url.replace(/\/$/, ""))) return true;
   const slug = url.match(CLINIC_PAGE)?.[1];
   return slug !== undefined && evidence.slugs.has(slug);
+}
+
+export type CheckName = "unknown URLs" | "amounts" | "banned phrases" | "attachments";
+
+export interface Failure {
+  name: CheckName;
+  detail: string;
 }
 
 export interface FixResult {
   reply: Reply;
   fixes: string[];
+  // A fix that removed something the Patient may need asks for a repair, so the Reply isn't left pointing at nothing.
+  failures?: Failure[];
 }
 
 // Any URL that no tool returned this turn and isn't on the static allowlist goes, along with its line.
 export function fixUnknownUrls(reply: Reply, evidence: TurnEvidence): FixResult {
-  const fixes: string[] = [];
+  const removed: string[] = [];
   const lines = reply.response.split("\n").filter((line) => {
     const unknown = urlsIn(line).filter((url) => !isAllowedUrl(url, evidence));
-    for (const url of unknown) fixes.push(`removed ${url}, which no tool returned, and its line`);
+    removed.push(...unknown);
     return unknown.length === 0;
   });
-  return { reply: fixes.length ? { ...reply, response: lines.join("\n").trim() } : reply, fixes };
+  if (removed.length === 0) return { reply, fixes: [] };
+  return {
+    reply: { ...reply, response: lines.join("\n").trim() },
+    fixes: removed.map((url) => `removed ${url}, which no tool returned, and its line`),
+    failures: removed.map((url) => ({
+      name: "unknown URLs",
+      detail: `Removed ${url}: no tool returned it this turn. If the Patient needs it, call the tool that returns it.`,
+    })),
+  };
 }
 
-// Tidies what's left after removing text from a line: doubled spaces and a space before punctuation.
-function tidy(line: string): string {
+// Closes the gaps left after removing text from a line: doubled spaces and a space before punctuation.
+function closeGaps(line: string): string {
   return line.replace(/[ \t]{2,}/g, " ").replace(/ +([.,;:!?])/g, "$1").trim();
 }
 
@@ -83,7 +122,9 @@ export function fixUrlPlacement(reply: Reply): FixResult {
   const body = reply.response
     .split("\n")
     .filter((line) => !urls.includes(cleanUrl(line.trim())))
-    .map((line) => (urlsIn(line).length ? tidy(line.replace(URL_PATTERN, (url) => url.replace(cleanUrl(url), "the link below"))) : line));
+    .map((line) =>
+      urlsIn(line).length ? closeGaps(line.replace(URL_PATTERN, (url) => url.replace(cleanUrl(url), "the link below"))) : line,
+    );
   const response = [body.join("\n").trimEnd(), ...urls].join("\n").trim();
   if (response === reply.response.trim()) return { reply, fixes: [] };
   return { reply: { ...reply, response }, fixes: ["moved URLs to the last lines"] };
@@ -114,27 +155,30 @@ export function fixMarkdown(reply: Reply): FixResult {
   return { reply: { ...reply, response }, fixes: ["stripped markdown"] };
 }
 
-function digitPattern(digits: string): RegExp {
-  return new RegExp(`(?<!\\d)${digits.split("").join("[ -]?")}(?!\\d)`, "g");
+function spacedDigits(digits: string): string {
+  return digits.split("").join("[ -]?");
 }
 
-// A second safety after redaction: the Patient's card digits, and their last four, never go back out.
+// Wording that introduces a card's last four digits, such as "ending in" or "last four are".
+const CARD_ENDING_WORDS = String.raw`(?:(?:ending|ends)(?:\s+(?:in|with))?\s+|last\s+(?:four|4)(?:\s+digits)?(?:\s+(?:are|is))?[:\s]\s*)`;
+
+// A second safety after redaction: the card numbers the guards found never go back out. Whole runs go anywhere,
+// and the last four go where they follow "ending in" style wording, so a matching year in ordinary text stays.
 export function fixCardDigits(reply: Reply, evidence: TurnEvidence): FixResult {
-  const patterns = evidence.inputCardDigits.flatMap((digits) => [digitPattern(digits), digitPattern(digits.slice(-4))]);
+  const patterns = evidence.inputCardDigits.flatMap((digits) => [
+    ...(digits.length > 4 ? [new RegExp(`(?<!\\d)${spacedDigits(digits)}(?!\\d)`, "g")] : []),
+    new RegExp(`(?<=${CARD_ENDING_WORDS})${spacedDigits(digits.slice(-4))}(?!\\d)`, "gi"),
+  ]);
   const stripped = patterns.reduce((text, pattern) => text.replace(pattern, ""), reply.response);
   if (stripped === reply.response) return { reply, fixes: [] };
-  const response = stripped.split("\n").map(tidy).join("\n");
+  const response = stripped.split("\n").map(closeGaps).join("\n");
   return { reply: { ...reply, response }, fixes: ["removed card digits from the Patient's message"] };
 }
 
-// Fields that must agree with each other, whatever the model wrote.
+// Fields that must agree with each other, whatever the model wrote. The tool loop already sets templateId.
 export function fixFieldConsistency(reply: Reply): FixResult {
   const fixes: string[] = [];
   const fixed = { ...reply };
-  if (fixed.templateId !== null) {
-    fixed.templateId = null;
-    fixes.push("set templateId to null");
-  }
   if (!fixed.escalate && fixed.escalationReason !== null) {
     fixed.escalationReason = null;
     fixes.push("set escalationReason to null because escalate is false");
@@ -151,7 +195,7 @@ export function fixFieldConsistency(reply: Reply): FixResult {
 }
 
 export interface NamedCheck {
-  name: string;
+  name: CheckName;
   ok: boolean;
   detail: string;
 }
@@ -159,16 +203,11 @@ export interface NamedCheck {
 // Amounts a Reply may state without a tool returning them, each with the source rule that sets it.
 const POLICY_AMOUNTS = [{ amount: 25, rule: "REVERSIBILITY and OPERATIONAL KNOWLEDGE 6: the Deposit's $25 cancellation fee" }];
 
-const AMOUNT_PATTERN = /\$\s?(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s?USD\b|\bUSD\s?(\d[\d,]*(?:\.\d+)?)/gi;
-
 const list = (items: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(items);
 
-// Every amount next to "$" or "USD" must appear as a number in this turn's tool results, or be a policy amount.
+// Every amount next to "$" or "USD" must be a money value in this turn's tool results, or a policy amount.
 export function checkAmounts(reply: Reply, evidence: TurnEvidence): NamedCheck {
-  const known = new Set([
-    ...(evidence.toolText.match(/\d+(?:\.\d+)?/g) ?? []).map(Number),
-    ...POLICY_AMOUNTS.map(({ amount }) => amount),
-  ]);
+  const known = new Set([...evidence.amounts, ...POLICY_AMOUNTS.map(({ amount }) => amount)]);
   const unknown = [...reply.response.matchAll(AMOUNT_PATTERN)]
     .filter((match) => !known.has(Number((match[1] ?? match[2] ?? match[3]).replaceAll(",", ""))))
     .map((match) => match[0].trim());
@@ -186,25 +225,34 @@ interface BannedPhrase {
   pattern: RegExp;
   // The source rule that bans it.
   rule: string;
-  // The phrase only counts when the same sentence also matches this.
-  onlyWith?: RegExp;
   // The sentence is allowed when it also matches this.
   unless?: RegExp;
 }
 
-const TIME_WINDOW =
-  /\b(?:\d+\s*(?:-|to)\s*\d+|a few|a couple(?: of)?|\d+|one|two|three)\s+(?:business\s+)?(?:hours?|days?|weeks?)\b|\blater today\b|\bby (?:tomorrow|tonight|the end of (?:the )?(?:day|week)|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\bwithin (?:a|an|one|\d+|a few|the next)\s+(?:\w+\s+)?(?:hours?|days?|weeks?)\b|\btomorrow\b/i;
+const TIME_WINDOW = String.raw`(?:(?:in|within|about|around|under|over)\s+)?(?:\d+\s*(?:-|to)\s*\d+|a few|a couple(?: of)?|\d+|an?|one|two|three)\s+(?:business\s+)?(?:hours?|days?|weeks?)\b|\blater today\b|\b(?:by\s+)?(?:tomorrow|tonight)\b|\bby (?:the end of (?:the )?(?:day|week)|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\bwithin the next\s+(?:\w+\s+)?(?:hours?|days?|weeks?)\b`;
+const DELIVERY = String.raw`\b(?:ready|done|finish(?:ed|es)?|complete(?:d)?|back|sent|deliver(?:ed)?)\b`;
+// A window tied to the assessment being ready, done, back, sent or delivered, in either order, within one clause.
+const TURNAROUND = new RegExp(
+  String.raw`\bassessment\b[^.?!,;]{0,40}?${DELIVERY}[^.?!,;]{0,25}?(?:${TIME_WINDOW})|${DELIVERY}[^.?!,;]{0,25}?\bassessment\b[^.?!,;]{0,25}?(?:${TIME_WINDOW})`,
+  "i",
+);
 
-// Phrases no Reply may send, each next to the source prompt rule that bans it.
+const HEAD_COVERING = String.raw`(?:hats?|caps?|beanies?|hoods?|headbands?|scarf|scarves|bandanas?|hijabs?|head ?wraps?|head ?coverings?)`;
+const ADVICE_VERB = String.raw`(?:bring(?:ing)?|pack(?:ing)?|wear(?:ing)?|buy(?:ing)?|pick(?:ing)? out)`;
+
+// The spec's banned phrases, each next to the source prompt rule that bans it.
 export const BANNED_PHRASES: BannedPhrase[] = [
-  { pattern: TIME_WINDOW, onlyWith: /\bassessment\b/i, rule: "GUIDELINES, No assessment turnaround promises" },
-  { pattern: /\bI['’]?ll get back to you\b|\blet me (?:look into|check)\b|\bI['’]?ll find out\b/i, rule: "CAPABILITIES & CONSTRAINTS: never stall" },
+  { pattern: TURNAROUND, rule: "GUIDELINES, No assessment turnaround promises" },
+  { pattern: /\bI['’]?ll get back to you\b/i, rule: "CAPABILITIES & CONSTRAINTS: never stall" },
   { pattern: /\ba coordinator will\b/i, rule: "VOICE (SINGLE COMMUNICATOR): never say a coordinator will help" },
-  { pattern: /\bsomeone from (?:our|the) team\b|\ba (?:team member|specialist) will\b/i, rule: "VOICE (SINGLE COMMUNICATOR): never say someone from our team will help" },
+  { pattern: /\bsomeone from (?:our|the) team\b/i, rule: "VOICE (SINGLE COMMUNICATOR): never say someone from our team will help" },
   {
-    pattern:
-      /\b(?:bring|pack|wear|buy|pick out|get|use|grab)\b[^.?!]{0,30}?\b(?:hats?|caps?|beanies?|hoods?|headbands?|scarf|scarves|bandanas?|hijabs?|head ?wraps?|head ?coverings?)\b/i,
-    unless: /\b(?:two|2)\s+weeks\b|\bagain\b/i,
+    pattern: new RegExp(String.raw`\b${ADVICE_VERB}\b[^.?!]{0,30}?\b${HEAD_COVERING}\b`, "i"),
+    // Negated advice, and saying when they can wear one again, are fine.
+    unless: new RegExp(
+      String.raw`\b(?:don['’]?t|do not|never|avoid|no|not|without)\b[^.?!]{0,20}?\b${ADVICE_VERB}\b|\b(?:two|2)\s+weeks\b|\bagain\b`,
+      "i",
+    ),
     rule: "GUIDELINES, No head-covering advice: nothing goes on the head for about two weeks after the procedure",
   },
 ];
@@ -212,16 +260,14 @@ export const BANNED_PHRASES: BannedPhrase[] = [
 export function checkBannedPhrases(reply: Reply): NamedCheck {
   const found: string[] = [];
   for (const sentence of reply.response.split(/(?<=[.!?])\s+|\n/)) {
-    for (const { pattern, rule, onlyWith, unless } of BANNED_PHRASES) {
+    for (const { pattern, rule, unless } of BANNED_PHRASES) {
       const match = sentence.match(pattern);
-      if (!match || (onlyWith && !onlyWith.test(sentence)) || unless?.test(sentence)) continue;
+      if (!match || unless?.test(sentence)) continue;
       found.push(`"${match[0]}" (${rule})`);
     }
   }
   return { name: "banned phrases", ok: found.length === 0, detail: found.length ? found.join("; ") : "no banned phrases" };
 }
-
-const MAX_ATTACHMENTS = 3;
 
 // A Reply carries at most 3 attachments, and only hosted URLs a tool returned this turn.
 export function checkAttachments(reply: Reply, evidence: TurnEvidence): NamedCheck {
@@ -234,8 +280,8 @@ export function checkAttachments(reply: Reply, evidence: TurnEvidence): NamedChe
 }
 
 export interface ValidationResult extends FixResult {
-  // Checks that still fail after the code fixes. These are what a repair turn is asked to fix.
-  failures: { name: string; detail: string }[];
+  // What still needs the model: fixes that removed something the Patient may need, then checks that fail.
+  failures: Failure[];
   checks: NamedCheck[];
 }
 
@@ -252,14 +298,16 @@ const CHECKS: ((reply: Reply, evidence: TurnEvidence) => NamedCheck)[] = [checkA
 // Code fixes first, then the checks that need the model to rewrite. Never changes `escalate`.
 export function validate(reply: Reply, evidence: TurnEvidence): ValidationResult {
   const fixes: string[] = [];
+  const failures: Failure[] = [];
   let current = reply;
   for (const fix of FIXES) {
     const result = fix(current, evidence);
     current = result.reply;
     fixes.push(...result.fixes);
+    failures.push(...(result.failures ?? []));
   }
   const checks = CHECKS.map((check) => check(current, evidence));
-  const failures = checks.filter((check) => !check.ok).map(({ name, detail }) => ({ name, detail }));
+  failures.push(...checks.filter((check) => !check.ok).map(({ name, detail }) => ({ name, detail })));
   return { reply: current, fixes, failures, checks };
 }
 
@@ -275,29 +323,34 @@ export function emptyValidationTrace(): ValidationTrace {
   return { runs: [], repairRan: false, shipped: null };
 }
 
-function repairRequest(failures: ValidationResult["failures"]): string {
+function repairRequest(failures: Failure[]): string {
   return [
     "Your Reply was not sent. Fix these problems and call submitReply again with the whole Reply:",
     ...failures.map(({ name, detail }) => `- ${name}: ${detail}`),
   ].join("\n");
 }
 
-// Validates each submitted Reply. While checks still fail after the code fixes, the model gets one repair turn,
-// and then the version with fewer failures ships. Failures that remain stay in the trace.
+// Validates each submitted Reply. While anything still fails after the code fixes, the model gets one repair turn,
+// and then the version with fewer failures ships. Failures that remain stay in the trace. An Escalation is never
+// validated, and a repair that changes `escalate` is not taken.
 export function validatingSubmit(evidence: TurnEvidence, trace: ValidationTrace): (reply: Reply) => SubmitOutcome {
   let first: ValidationResult | null = null;
   return (submitted) => {
-    const result = validate(submitted, evidence);
-    trace.runs.push({ fixes: result.fixes, checks: result.checks });
     if (first) {
-      const repairedIsBetter = result.failures.length <= first.failures.length;
+      const result = validate(submitted, evidence);
+      trace.runs.push({ fixes: result.fixes, checks: result.checks });
+      const repairedIsBetter =
+        submitted.escalate === first.reply.escalate && result.failures.length <= first.failures.length;
       trace.shipped = repairedIsBetter ? "repaired" : "first";
       return { reply: repairedIsBetter ? result.reply : first.reply };
     }
+    if (submitted.escalate) return { reply: submitted };
+    const result = validate(submitted, evidence);
+    trace.runs.push({ fixes: result.fixes, checks: result.checks });
     trace.shipped = "first";
     if (result.failures.length === 0) return { reply: result.reply };
     first = result;
     trace.repairRan = true;
-    return { repair: repairRequest(result.failures), fallback: result.reply };
+    return { repair: repairRequest(result.failures), bestSoFar: result.reply };
   };
 }

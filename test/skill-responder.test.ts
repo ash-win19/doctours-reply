@@ -1,11 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { ResponseCreateParamsNonStreaming, ResponseInputItem } from "openai/resources/responses/responses";
+import type { ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
 import { respondWithSkills } from "../src/skill-responder.ts";
 import { loadSkillRegistry, statusModule } from "../src/skills.ts";
 import { escalationReply } from "../src/escalation.ts";
 import * as context from "../src/context.ts";
-import { VALID_REPLY, firstUserText, functionCall, scriptedModel, toolNames, type FakeFunctionCall } from "./fakes.ts";
+import {
+  VALID_REPLY,
+  firstUserText,
+  functionCall,
+  functionOutputs,
+  inputItems,
+  scriptedModel,
+  toolNames,
+  type FakeFunctionCall,
+} from "./fakes.ts";
 
 const registry = loadSkillRegistry();
 const HEVA = "11111111-1111-4111-8111-111111111111";
@@ -18,10 +27,7 @@ function run(chosen: string[], turns: FakeFunctionCall[][], message = "I'm leani
 }
 
 function lastOutput(request: ResponseCreateParamsNonStreaming): string {
-  const outputs = (request.input as ResponseInputItem[]).filter(
-    (item): item is ResponseInputItem.FunctionCallOutput => "type" in item && item.type === "function_call_output",
-  );
-  return outputs.at(-1)!.output as string;
+  return functionOutputs(request).at(-1)!.output as string;
 }
 
 test("the system prompt is the core, the Pipeline Status module, then the chosen skills with what they require", async () => {
@@ -144,17 +150,53 @@ test("a tool outside the loaded skills is refused, and working memory is never a
   for (const request of model.requests) assert.ok(!toolNames(request).includes("updateWorkingMemory"));
 });
 
-function inputItemsOf(request: ResponseCreateParamsNonStreaming): ResponseInputItem[] {
-  return request.input as ResponseInputItem[];
-}
-
-test("a fabricated payment link never ships, and the fix is traced", async () => {
+test("a fabricated payment link never ships, and its removal asks for a repair", async () => {
   const fabricated = { ...VALID_REPLY, response: "Pay the Silver deposit using the link below.\nhttps://www.doctours.com/payment/silver" };
-  const { result } = run(["decision-funnel"], [[functionCall("submitReply", fabricated)]]);
+  const { model, result } = run(["decision-funnel"], [[functionCall("submitReply", fabricated)], [functionCall("submitReply", fabricated)]]);
   const { reply, trace } = await result;
   assert.equal(reply.response, "Pay the Silver deposit using the link below.");
-  assert.deepEqual(trace.validation!.runs[0].fixes, ["removed https://www.doctours.com/payment/silver, which no tool returned, and its line"]);
-  assert.equal(trace.validation!.repairRan, false);
+  assert.deepEqual(trace.validation.runs[0].fixes, ["removed https://www.doctours.com/payment/silver, which no tool returned, and its line"]);
+  assert.match(
+    (inputItems(model.requests[1]).at(-1) as { content: string }).content,
+    /Removed https:\/\/www\.doctours\.com\/payment\/silver: no tool returned it this turn\. If the Patient needs it, call the tool that returns it\./,
+  );
+  assert.equal(trace.validation.repairRan, true);
+});
+
+test("the repair turn can call the tool that returns a link, so the link ships", async () => {
+  const assessmentUrl = "https://www.doctours.com/assessment/c3d4e5f6-3333-4333-8333-333333333333";
+  const copied = { ...VALID_REPLY, response: `You can book from your assessment using the link below.\n${assessmentUrl}` };
+  const { result } = run(
+    ["decision-funnel"],
+    [
+      [functionCall("submitReply", copied)],
+      [functionCall("getLatestAssessmentTool", {})],
+      [functionCall("submitReply", copied)],
+    ],
+  );
+  const { reply, trace } = await result;
+  assert.equal(reply.response, copied.response);
+  assert.equal(trace.validation.shipped, "repaired");
+});
+
+test("a second submitReply in the same response doesn't count as the repair", async () => {
+  const invented = { ...VALID_REPLY, response: "Silver is $2,999." };
+  const alsoInvented = { ...VALID_REPLY, response: "Silver is $2,998." };
+  const repaired = { ...VALID_REPLY, response: "Silver is $3,000." };
+  const { model, result } = run(
+    ["clinic-packages"],
+    [
+      [functionCall("getClinicPackagesTool", { clinicName: "Heva" })],
+      [functionCall("submitReply", invented), functionCall("submitReply", alsoInvented)],
+      [functionCall("submitReply", repaired)],
+    ],
+  );
+  const { reply, trace } = await result;
+  assert.equal(reply.response, "Silver is $3,000.");
+  assert.equal(trace.validation.runs.length, 2);
+  const outputs = functionOutputs(model.requests[2]).slice(-2).map((output) => output.output as string);
+  assert.ok(outputs.every((output) => /not sent/i.test(output)), String(outputs));
+  assert.match((inputItems(model.requests[2]).at(-1) as { content: string }).content, /\$2,999/);
 });
 
 test("a link a tool returned this turn ships", async () => {
@@ -183,14 +225,14 @@ test("a failing check gets one repair turn that lists the failures, and the repa
   );
   const { reply, trace } = await result;
   assert.equal(reply.response, "Silver is $3,000.");
-  const repairTurn = inputItemsOf(model.requests[2]).at(-1) as { role: string; content: string };
+  const repairTurn = inputItems(model.requests[2]).at(-1) as { role: string; content: string };
   assert.equal(repairTurn.role, "user");
   assert.match(repairTurn.content, /\$2,999 isn't in this turn's tool results/);
-  assert.deepEqual(model.requests[2].tool_choice, { type: "function", name: "submitReply" });
-  assert.equal(trace.validation!.repairRan, true);
-  assert.equal(trace.validation!.shipped, "repaired");
+  assert.equal(model.requests[2].tool_choice, "required");
+  assert.equal(trace.validation.repairRan, true);
+  assert.equal(trace.validation.shipped, "repaired");
   assert.deepEqual(
-    trace.validation!.runs.map((run) => run.checks.filter((check) => !check.ok).map((check) => check.name)),
+    trace.validation.runs.map((run) => run.checks.filter((check) => !check.ok).map((check) => check.name)),
     [["amounts"], []],
   );
 });
@@ -201,7 +243,7 @@ test("after the repair, the version with fewer failures ships, and there is neve
   const { model, result } = run([], [[functionCall("submitReply", oneFailure)], [functionCall("submitReply", twoFailures)]]);
   const { reply, trace } = await result;
   assert.equal(reply.response, "Silver is $2,999.");
-  assert.equal(trace.validation!.shipped, "first");
+  assert.equal(trace.validation.shipped, "first");
   assert.equal(model.requests.length, 2);
 });
 
@@ -216,5 +258,5 @@ test("an Escalation from the escalate tool skips the validator", async () => {
   const { result } = run(["payments"], [[functionCall("escalate", { reason: "Refund", cannotDo: "refund a payment" })]]);
   const { reply, trace } = await result;
   assert.equal(reply.response, "I can't refund a payment. I'm getting a person for you.");
-  assert.deepEqual(trace.validation!.runs, []);
+  assert.deepEqual(trace.validation.runs, []);
 });

@@ -4,10 +4,9 @@ import { escalationReply } from "./escalation.ts";
 import { cardDigitsIn, screenMessage } from "./guards.ts";
 import type { Reply } from "./reply.ts";
 import { DraftingError, type CreateResponse, type Step, type Trace } from "./model-calls.ts";
-import { respondBaseline } from "./responder.ts";
+import { respondBaseline, type BaselineTrace } from "./responder.ts";
 import { respondWithSkills, type SkillResponderTrace } from "./skill-responder.ts";
 import { loadSkillRegistry, statusModule, type SkillRegistry } from "./skills.ts";
-import type { ResponderTrace } from "./tool-loop.ts";
 import { buildStateCard, recentTurns } from "./state-card.ts";
 import { triage, type TriageTrace } from "./triage.ts";
 
@@ -40,7 +39,7 @@ export interface PipelineTrace extends Trace {
   path: PipelinePath | null;
   guards: { cardNumberFound: boolean; humanRequested: boolean };
   triage: StepTrace<TriageTrace> | null;
-  responder: StepTrace<ResponderTrace | SkillResponderTrace> | null;
+  responder: StepTrace<BaselineTrace | SkillResponderTrace> | null;
   // Set when the skill-based responder couldn't take the message, so the baseline responder answered.
   fallback: { to: "baseline"; reason: string } | null;
 }
@@ -104,21 +103,21 @@ export async function respond(
 
     step = "responder";
     // The validator keeps these out of the Reply, as a second safety after redaction.
-    const validation = { inputCardDigits: cardDigitsIn(text) };
+    const inputCardDigits = cardDigitsIn(text);
     const status = statusModule(context.PIPELINE_STATUS);
     const reason = fallbackReason(registry, decision.skills, status, context.PIPELINE_STATUS);
     if (reason) {
       // A message that needs a skill that doesn't exist yet still gets the original prompt's full rules.
       trace.path = "baseline";
       trace.fallback = { to: "baseline", reason };
-      const { reply, trace: responderTrace } = await respondBaseline(screening.redactedText, responderOptions, validation);
+      const { reply, trace: responderTrace } = await respondBaseline(screening.redactedText, responderOptions, { inputCardDigits });
       trace.responder = detachCalls(responderTrace, trace);
       return { reply, trace };
     }
     trace.path = "skills";
     const { reply, trace: responderTrace } = await respondWithSkills(
       screening.redactedText,
-      { registry, chosen: decision.skills, patient: context, status, ...validation },
+      { registry, chosen: decision.skills, patient: context, status, inputCardDigits },
       responderOptions,
     );
     trace.responder = detachCalls(responderTrace, trace);
@@ -128,7 +127,7 @@ export async function respond(
     // Each step throws a DraftingError carrying its own partial trace.
     if (error instanceof DraftingError) {
       if (step === "triage") trace.triage = detachCalls(error.trace as TriageTrace, trace);
-      else trace.responder = detachCalls(error.trace as ResponderTrace, trace);
+      else trace.responder = detachCalls(error.trace as BaselineTrace, trace);
     }
     trace.path = "drafting-failed";
     throw new DraftingError(error instanceof Error ? error.message : String(error), trace);

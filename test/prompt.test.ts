@@ -49,6 +49,12 @@ test("the core prompt fills every placeholder from the Patient context", () => {
   assert.ok(core.includes(context.CHAT_LIST));
   assert.ok(core.includes(context.CLINIC_FLAGS));
   assert.ok(core.includes(context.WORKING_MEMORY));
+  assert.ok(
+    core.includes(
+      "from this list: https://www.doctours.com/consultation (book the free consultation), https://www.doctours.com/image-upload (intake photos), and https://www.doctours.com/clinic/{slug} with a slug",
+    ),
+  );
+  assert.ok(core.includes("at most 3. Otherwise null."));
   assert.match(core, /call loadSkill with one of these ids:\n- payments: Money questions\.\n/);
 });
 

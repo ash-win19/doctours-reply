@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getAllClinics, getPatientImages, getPaymentLink } from "../src/packet-tools.ts";
+import { getAllClinics, getClinicPackages, getPatientImages, getPaymentLink } from "../src/packet-tools.ts";
 import { collectEvidence, emptyEvidence, validate, type TurnEvidence } from "../src/validator.ts";
 import { VALID_REPLY } from "./fakes.ts";
 
@@ -16,19 +16,30 @@ function reply(response: string, overrides = {}) {
   return { ...VALID_REPLY, response, ...overrides };
 }
 
-test("evidence holds the URLs, slugs and text of this turn's tool results", () => {
-  const evidence = evidenceFrom(getAllClinics(), getPaymentLink({ type: "payment", clinicPackageId: "44444444-4444-4444-8444-444444444441" }));
+test("evidence holds the URLs, slugs and money values of this turn's tool results", () => {
+  const evidence = evidenceFrom(
+    getAllClinics(),
+    getPaymentLink({ type: "payment", clinicPackageId: "44444444-4444-4444-8444-444444444441" }),
+    getClinicPackages({ clinicName: "Heva" }),
+  );
   assert.ok(evidence.toolUrls.has(PAYMENT_URL));
   assert.ok(evidence.toolUrls.has("https://www.doctours.com/clinic/heva"));
   assert.deepEqual([...evidence.slugs].sort(), ["dr-hakan", "heva"]);
-  assert.match(evidence.toolText, /Heva Clinic/);
+  assert.ok(evidence.amounts.has(500));
 });
 
 test("a fabricated payment link is removed along with its line", () => {
   const fabricated = reply("You can pay the Silver deposit using the link below.\nhttps://www.doctours.com/payment/silver-heva");
-  const { reply: fixed, fixes } = validate(fabricated, emptyEvidence());
+  const { reply: fixed, fixes, failures } = validate(fabricated, emptyEvidence());
   assert.equal(fixed.response, "You can pay the Silver deposit using the link below.");
   assert.deepEqual(fixes, ["removed https://www.doctours.com/payment/silver-heva, which no tool returned, and its line"]);
+  assert.deepEqual(failures, [
+    {
+      name: "unknown URLs",
+      detail:
+        "Removed https://www.doctours.com/payment/silver-heva: no tool returned it this turn. If the Patient needs it, call the tool that returns it.",
+    },
+  ]);
 });
 
 test("a URL a tool returned this turn is kept", () => {
@@ -82,7 +93,7 @@ test("markdown markers are stripped, but URLs keep their underscores", () => {
   const markdown = reply(
     ["## Heva packages", "- **Silver** is $3,000", "* __Gold__ is *$4,500*", "Pay with `the link below`.", "https://example.test/pay_now_link"].join("\n"),
   );
-  const { reply: fixed, fixes } = validate(markdown, evidenceFrom("https://example.test/pay_now_link 3000 4500"));
+  const { reply: fixed, fixes } = validate(markdown, evidenceFrom("https://example.test/pay_now_link $3,000 $4,500"));
   assert.equal(fixed.response, ["Heva packages", "Silver is $3,000", "Gold is $4,500", "Pay with the link below.", "https://example.test/pay_now_link"].join("\n"));
   assert.deepEqual(fixes, ["stripped markdown"]);
 });
@@ -95,21 +106,26 @@ test("card digits from the Patient's message are removed from the Reply", () => 
   assert.deepEqual(fixes, ["removed card digits from the Patient's message"]);
 });
 
+test("the last four digits go only where they follow card-ending wording, so a matching year stays", () => {
+  const evidence = emptyEvidence(["2026"]);
+  const { reply: fixed } = validate(reply("Heva has dates open in 2026. I can't charge the card ending in 2026."), evidence);
+  assert.equal(fixed.response, "Heva has dates open in 2026. I can't charge the card ending in.");
+  const lastFour = validate(reply("Your card's last four are 2026."), evidence).reply.response;
+  assert.equal(lastFour, "Your card's last four are.");
+});
+
 test("field consistency is enforced in code", () => {
   const inconsistent = reply("Sounds good.", {
-    templateId: "tpl_1",
     escalationReason: "left over",
     shouldFollowUp: false,
     followUpTiming: "1 month",
     attachmentUrls: [],
   });
   const { reply: fixed, fixes } = validate(inconsistent, emptyEvidence());
-  assert.equal(fixed.templateId, null);
   assert.equal(fixed.escalationReason, null);
   assert.equal(fixed.followUpTiming, null);
   assert.equal(fixed.attachmentUrls, null);
   assert.deepEqual(fixes, [
-    "set templateId to null",
     "set escalationReason to null because escalate is false",
     "set followUpTiming to null because shouldFollowUp is false",
     "set empty attachmentUrls to null",
@@ -123,6 +139,20 @@ test("the validator never changes escalate", () => {
   assert.equal(fixed.escalationReason, "why");
   const answer = reply("Yes, it's free.", { escalate: false });
   assert.equal(validate(answer, emptyEvidence()).reply.escalate, false);
+});
+
+test("amounts come from money values in tool results, never from digits inside ids", () => {
+  const heva = evidenceFrom(getClinicPackages({ clinicName: "Heva" }));
+  assert.deepEqual(validate(reply("Silver is $3,000 with a $500 deposit, and Gold is $4,500 with $600 down."), heva).failures, []);
+  for (const made_up of ["$4,444", "$8,444", "$3", "$1,111"]) {
+    assert.equal(validate(reply(`Silver is ${made_up}.`), heva).failures[0]?.name, "amounts", made_up);
+  }
+});
+
+test("a string in a tool result grounds an amount only when it reads as money", () => {
+  const evidence = evidenceFrom({ note: "The companion fee is $75 per night, room 204." });
+  assert.deepEqual(validate(reply("The companion fee is $75 a night."), evidence).failures, []);
+  assert.equal(validate(reply("That's $204."), evidence).failures[0]?.name, "amounts");
 });
 
 test("every dollar amount must come from this turn's tool results or the policy list", () => {
@@ -143,6 +173,8 @@ test("banned phrases fail with the source rule that bans them", () => {
     ["The team usually finishes your assessment within a day.", /assessment turnaround/],
     ["Your assessment will be ready later today.", /assessment turnaround/],
     ["I'll get back to you on that.", /never stall/],
+    ["Your assessment will be back to you by tomorrow.", /assessment turnaround/],
+    ["Pack a beanie for the flight home.", /head-covering/],
     ["A coordinator will reach out tomorrow.", /a coordinator will/i],
     ["Someone from our team will confirm it.", /someone from our team/i],
     ["Bring a loose cap for the flight home.", /head-covering/],
@@ -163,6 +195,13 @@ test("timings that are real commitments, and the hat question, are allowed", () 
     "The medical team is working on your assessment and you'll get it as soon as it's ready.",
     "You can wear a hat again after about two weeks.",
     "I'll check in after a month if I don't hear from you.",
+    "Once your assessment is ready, plan on 3 days in Istanbul.",
+    "We can go over your assessment tomorrow if you have questions.",
+    "Please don't wear a hat until your doctor says it's okay.",
+    "Avoid wearing a cap for the first two weeks.",
+    "Please take your hat off for the photos.",
+    "Let me check Heva's packages for you.",
+    "A team member will meet you at the airport.",
   ]) {
     assert.deepEqual(validate(reply(response), emptyEvidence()).failures, [], response);
   }

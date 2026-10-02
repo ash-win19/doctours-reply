@@ -163,10 +163,11 @@ test("in the default mode, a Reply from the baseline fallback is validated too",
   const model = scriptedModel([
     [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
     [functionCall("submitReply", FABRICATED)],
+    [functionCall("submitReply", FABRICATED)],
   ]);
   const { reply, trace } = await respond("How do I pay?", "default", options(model.create));
   assert.equal(reply.response, "Pay using the link below.");
-  assert.equal((trace as PipelineTrace).responder!.validation!.runs.length, 1);
+  assert.equal((trace as PipelineTrace).responder!.validation!.runs.length, 2);
 });
 
 test("baseline mode stays the untouched before, with no validator", async () => {
@@ -185,4 +186,31 @@ test("card digits that weren't redacted still never reach the Reply", async () =
   ]);
   const { reply } = await respond(message, "default", options(model.create));
   assert.equal(reply.response, "I can't check for you.");
+});
+
+test("an Escalation submitted by the baseline fallback skips the validator and keeps escalate", async () => {
+  const escalation = { ...VALID_REPLY, escalate: true, escalationReason: "refund", response: "I'm getting a person for you. Silver is $9." };
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
+    [functionCall("submitReply", escalation)],
+  ]);
+  const { reply, trace } = await respond("refund me", "default", options(model.create));
+  assert.equal(reply.escalate, true);
+  assert.equal(reply.response, escalation.response);
+  assert.equal(model.requests.length, 2);
+  assert.deepEqual((trace as PipelineTrace).responder!.validation!.runs, []);
+});
+
+test("a repair can't change escalate, so the first version ships when it tries", async () => {
+  const invented = { ...VALID_REPLY, response: "Silver is $9." };
+  const flipped = { ...VALID_REPLY, escalate: true, escalationReason: "why", response: "I'm getting a person for you." };
+  const model = scriptedModel([
+    [functionCall("submitTriage", triageDecision({ skills: ["other"] }))],
+    [functionCall("submitReply", invented)],
+    [functionCall("submitReply", flipped)],
+  ]);
+  const { reply, trace } = await respond("How much?", "default", options(model.create));
+  assert.equal(reply.escalate, false);
+  assert.equal(reply.response, "Silver is $9.");
+  assert.equal((trace as PipelineTrace).responder!.validation!.shipped, "first");
 });
