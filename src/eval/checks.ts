@@ -132,7 +132,8 @@ export function checkFields(reply: Reply, expected: Record<string, FieldExpectat
   const describe = (value: FieldExpectation) =>
     value === "*" ? "a value" : Array.isArray(value) ? `one of ${quoted(value)}` : JSON.stringify(value);
   const wrong = Object.entries(expected)
-    .filter(([path, value]) => !fieldMatches(fieldAt(reply, path), value))
-    .map(([path, value]) => `${path} is ${JSON.stringify(fieldAt(reply, path)) ?? "undefined"}, expected ${describe(value)}`);
+    .map(([path, value]) => ({ path, value, actual: fieldAt(reply, path) }))
+    .filter(({ value, actual }) => !fieldMatches(actual, value))
+    .map(({ path, value, actual }) => `${path} is ${JSON.stringify(actual) ?? "undefined"}, expected ${describe(value)}`);
   return { ok: wrong.length === 0, detail: wrong.length ? wrong.join("; ") : "every field matches" };
 }

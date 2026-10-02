@@ -1,9 +1,9 @@
 ---
 id: assessment-aftercare
-description: The Assessment and aftercare: what it shows, when it's ready, changing the hairline or plan, recovery and what to wear, finasteride or minoxidil.
+description: The Assessment and aftercare: what it shows, when it's ready, changing the hairline or graft estimate, what to wear after, finasteride.
 tools: [getLatestAssessmentTool]
 requires: []
-overrides: []
+overrides: [NO STALLING / NO OFF-CHANNEL PROMISES (core): the revision commitment]
 sources: [OPERATIONAL KNOWLEDGE 3, GUIDELINES no assessment turnaround promises, GUIDELINES no head-covering advice, PACKAGE & CLINIC FACTS finasteride, CAPABILITIES & CONSTRAINTS assessment edits, TOOL USAGE]
 ---
 # ASSESSMENT (OPERATIONAL KNOWLEDGE 3)

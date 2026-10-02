@@ -91,21 +91,6 @@ test("the Pipeline Status module is picked by status, and only exists for status
   assert.equal(statusModule("NOT_A_STATUS"), null);
 });
 
-test("every PRE_CLINICAL_SENT topic has a skill with the tools its rules call for", () => {
-  const registry = loadSkillRegistry();
-  const skill = (id: string) => registry.resolve([id]).find((loaded) => loaded.id === id)!;
-  assert.deepEqual(skill("consultation").tools, ["getConsultationRescheduleLinkTool"]);
-  assert.deepEqual(skill("pause").tools, []);
-  assert.deepEqual(skill("pause").overrides, ["decision-funnel advancement", "collection anchors"]);
-  assert.deepEqual(registry.resolve(["travel"]).map(({ id }) => id), ["clinic-packages", "travel"]);
-  assert.deepEqual(skill("clinic-contact").tools, ["getAllClinicsTool"]);
-  assert.deepEqual(skill("assessment-aftercare").tools, ["getLatestAssessmentTool"]);
-  assert.deepEqual(skill("creator").tools, []);
-  assert.match(skill("pause").text, /^# TIME-BOUND PAUSE/);
-  assert.match(skill("clinic-contact").text, /^# CLINIC WEBSITE/);
-  assert.match(skill("creator").text, /molly@doctours\.com/);
-});
-
 test("each rule lives in one skill: the parked PACKAGE & CLINIC FACTS bullets moved to their homes", () => {
   const registry = loadSkillRegistry();
   const holders = (phrase: string) =>

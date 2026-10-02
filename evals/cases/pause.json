@@ -2,21 +2,31 @@
   {
     "id": "pause-saving",
     "group": "pause",
-    "rule": "Source, TIME-BOUND PAUSE: saving funds gets the three-beat close with a 1 month Follow-up and a promisesMade note.",
+    "rule": "Source, TIME-BOUND PAUSE: saving funds gets all three beats (take your time, a dated check-in, an offer to adjust it), followUpTiming 1 month, and a promisesMade note.",
     "text": "I need to save up first",
     "expect": {
       "escalate": false,
       "noUrl": true,
       "fields": {
         "shouldFollowUp": true,
-        "followUpTiming": [
-          "1 month",
-          "a month",
-          "one month",
-          "next month"
-        ],
+        "followUpTiming": "1 month",
         "workingMemoryUpdates.promisesMade": "*"
-      }
+      },
+      "includes": [
+        [
+          "check in",
+          "check back",
+          "follow up",
+          "reach out"
+        ],
+        [
+          "more or less time",
+          "more or less",
+          "adjust",
+          "move that",
+          "change that"
+        ]
+      ]
     }
   },
   {

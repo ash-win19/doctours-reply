@@ -2,7 +2,7 @@
   {
     "id": "contact-website",
     "group": "clinic-contact",
-    "rule": "Source, CLINIC WEBSITE: a first website ask gets the Doctours clinic page built from the tool's slug.",
+    "rule": "Source, CLINIC WEBSITE: a first website ask gets the Doctours clinic page built from the tool's slug. Note: the packet fixture's clinic url equals its Doctours page, so this case can't catch a clinic's own site going out on the first ask until a context override gives the clinic a separate url.",
     "text": "What's Heva's website?",
     "expect": {
       "escalate": false,

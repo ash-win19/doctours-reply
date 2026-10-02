@@ -56,8 +56,8 @@
   {
     "id": "assess-what-to-wear",
     "group": "assessment-aftercare",
-    "rule": "Source, GUIDELINES no head-covering advice: front-opening tops, nothing on the head.",
-    "text": "What should I pack to wear after the procedure? Should I bring a hat?",
+    "rule": "Source, GUIDELINES no head-covering advice: front-opening tops, and no hat, cap, beanie, scarf or other head covering.",
+    "text": "What should I pack to wear after the procedure?",
     "expect": {
       "escalate": false,
       "includes": [
@@ -69,12 +69,15 @@
         ]
       ],
       "excludes": [
-        "bring a hat",
-        "pack a hat",
-        "a loose",
+        "a hat",
         "beanie",
+        "scarf",
+        "a cap",
+        "baseball cap",
         "bandana",
-        "headband"
+        "headband",
+        "head wrap",
+        "durag"
       ]
     }
   },

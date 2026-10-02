@@ -6,8 +6,8 @@ import type { Reply } from "../reply.ts";
 import {
   checkCalls,
   checkEscalate,
-  checkFields,
   checkExcludes,
+  checkFields,
   checkIncludes,
   checkLastLineUrl,
   checkMaxAttachments,

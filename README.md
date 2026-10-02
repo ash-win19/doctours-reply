@@ -71,12 +71,12 @@ sources: [PRE_CLINICAL_SENT Steps 0 to 3, REVERSIBILITY, ...]
 | `clinic-packages` | Package prices, Deposits, inclusions, hotel nights, bookable weekdays, doctors, Clinic status, afro specialty, a clinic's direct quote | `getAllClinicsTool`, `getClinicPackagesTool`, `getClinicDoctorsTool`, `getSavedClinicsTool` |
 | `decision-funnel` | Choosing a clinic and Package, booking from the assessment, Payment and Checkout links, tentative dates, what can change later. Requires `clinic-packages` | `getLatestAssessmentTool`, `getPatientContextTool`, `updateUserClinicPreferencesTool`, `getPaymentLinkTool`, `issuePromoCodeTool` |
 | `payments` | Financing, Layaway, insurance, CareCredit and Cherry, Deposit and balance terms, a Deposit paid to a clinic, promos. Requires `clinic-packages` | `issuePromoCodeTool`, `getPaymentLinkTool` |
-| `consultation` | Whether the free Consultation is free, what it is and who it's with, booking it, confirming or rescheduling one | `getConsultationRescheduleLinkTool` |
-| `pause` | A Patient stepping back: the dated Follow-up close, `shouldFollowUp`, `followUpTiming` and `promisesMade`. Overrides decision-funnel advancement and collection anchors | none |
+| `consultation` | Whether the free Consultation is free (a phone call with Doctours' team, with the Consultation link last), booking, confirming or rescheduling it. Its PHONE CONTACT slip-through line now calls `escalate`, per ADR 0002 | `getConsultationRescheduleLinkTool` |
+| `pause` | A Patient stepping back: the dated Follow-up close, `shouldFollowUp`, `followUpTiming` and `promisesMade`. Overrides DECISION STEPS advancement (decision-funnel), the Intake item ask (intake-photos), and the core's NO STALLING rule for the dated Follow-up | none |
 | `travel` | Flights, travel timing, airports, hotels, transfers, passports. Requires `clinic-packages` | `getClinicPackagesTool` |
-| `clinic-contact` | A clinic's website (the Doctours clinic page first), and whether the Patient can message a clinic themselves | `getAllClinicsTool` |
-| `assessment-aftercare` | What the Assessment shows, revision requests, no turnaround windows, what to wear after, finasteride and minoxidil | `getLatestAssessmentTool` |
-| `creator` | Creator and partnership requests, answered only with Molly's email | none |
+| `clinic-contact` | A clinic's website (the Doctours clinic page first), and whether the Patient can message a clinic themselves | `getAllClinicsTool`, `getSavedClinicsTool` |
+| `assessment-aftercare` | What the Assessment shows, revision requests, no turnaround windows, what to wear after, finasteride and minoxidil. Overrides the core's NO STALLING rule for the one revision commitment | `getLatestAssessmentTool` |
+| `creator` | Creator and partnership requests, answered only with Molly's email. The source's claim that these are routed to a person first is dropped, since ADR 0002 answers them | none |
 
 ### baseline
 

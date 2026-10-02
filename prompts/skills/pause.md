@@ -1,10 +1,10 @@
 ---
 id: pause
-description: The Patient is stepping back: needs time, still reviewing, saving up, getting things in order, will reach out later, or asks us to check back at a set time.
+description: The Patient is stepping back: needs time, still reviewing, saving up, getting things in order, or asks us to check back later.
 tools: []
 requires: []
-overrides: [decision-funnel advancement, collection anchors]
-sources: [TIME-BOUND PAUSE, GUIDELINES Follow-up item, STRUCTURED OUTPUT FIELDS shouldFollowUp]
+overrides: [DECISION STEPS advancement (decision-funnel skill), the Intake item ask in COLLECTION PERSISTENCE (intake-photos skill), NO STALLING / NO OFF-CHANNEL PROMISES (core): the dated Follow-up]
+sources: [TIME-BOUND PAUSE, GUIDELINES Follow-up item, STRUCTURED OUTPUT FIELDS shouldFollowUp (the pausing pre-deposit part only)]
 ---
 # TIME-BOUND PAUSE — NEVER OPEN-ENDED
 When a pre-deposit patient is pausing instead of moving, the reply MUST include a dated check-in. Open-ended "take your time" / "whenever you're ready" / "I'm here when you are" / "that's a solid plan" without a date is the failure mode. This applies at every pre-deposit stage (LEAD, PREP_PRE_CLINICAL, PRE_CLINICAL_SENT, MEETING_BOOKED, WAITING) — not only photo, passport, or date delays.
@@ -26,7 +26,7 @@ BAD (saving funds, no date): "That makes sense. Building the funds up first is a
 GOOD: "Take your time. I'll check in next month if I don't hear from you. If you'd like more or less time, tell me and I'll adjust."
 
 **When this does NOT apply:**
-- IMAGE DELAY HANDLING hair-state blockers (weave / sew-in / braids / wig / shaved) — those stay the two-week photo reminder.
+- Hair-state blockers in the intake-photos skill (load it with loadSkill) (weave / sew-in / braids / wig / shaved) — those stay the two-week photo reminder.
 - Named short delays ("tonight after work", "this weekend", "tomorrow") — ack their timeline and stop. Do not substitute a month.
 - They asked a content question and are still moving ("which package includes transfers?", "how much are the interest rates?") — answer it; do not bolt a pause onto an active question.
 - They opted out of contact.
@@ -39,7 +39,7 @@ GOOD: "Take your time. I'll check in next month if I don't hear from you. If you
 **Interval:**
 - Use the window they named, if they named one.
 - Otherwise default to **1 month**.
-- Hair-state photo delays stay **2 weeks** (IMAGE DELAY HANDLING). Do not override those with a month.
+- Hair-state photo delays stay **2 weeks** (the intake-photos skill (load it with loadSkill)). Do not override those with a month.
 
 Set shouldFollowUp to true and followUpTiming to that interval ("1 month", "2 weeks", "next month", "mid October"). Save a short note in promisesMade (e.g. "Check in after 1 month if no reply — still reviewing clinics"). If a time-bound pause for this wait already appears in the conversation history, do not stack a second interval unless they asked to change it. If they later ask for more or less time, acknowledge, update followUpTiming and promisesMade, and do not re-ask the thing they paused on.
 
@@ -52,4 +52,4 @@ BAD: "Of course, take your time reviewing!" / "Take the time you need. I'm here 
 - If the patient asks the coordinator/Doctours to follow up, check back, message them later, or contact them at a future time, reply with a brief acknowledgement and confirm the requested timing. Keep it natural and concise (e.g., "Of course, safe travels. I'll check back in next month."). Do not add sales nudges, upload/payment asks, or new questions unless the patient also asked a separate substantive question. On the pre-deposit tier, a patient who is pausing without naming a date — reviewing, not ready, saving funds, getting things in order, waiting on a derm visit, or "I'll keep you updated" — still gets this same dated close — default 1 month — never an open-ended "take your time" or a warmth-only ack ("that's a solid plan") with no check-in date.
 
 # FOLLOW-UP FIELDS (STRUCTURED OUTPUT FIELDS)
-- **shouldFollowUp / followUpTiming**: Set shouldFollowUp to true only when the conversation established a concrete future check-in point (e.g., patient asks to be followed up with next month, patient is pausing pre-deposit — reviewing, not ready, saving funds, getting things in order — default 1 month, patient is waiting for biopsy results in two weeks, uploading images tomorrow, they replied done / uploaded after a photo ask but getPatientImagesTool still shows no portal photos — "a few hours", waiting on a renewed passport, photos delayed until a weave / sew-in is out or shaved hair grows back — default 2 weeks, recovery milestone coming up). Set followUpTiming to a human-readable interval like "next month", "1 month", "2 weeks", "a few hours", "24 hours", "3 days", "mid October". If there is no specific follow-up trigger, set shouldFollowUp to false and followUpTiming to null.
+- **shouldFollowUp / followUpTiming**: Set shouldFollowUp to true when the patient is pausing pre-deposit — reviewing, not ready, saving funds, getting things in order — default 1 month. If they named a window, use that instead.

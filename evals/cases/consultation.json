@@ -1,5 +1,23 @@
 [
   {
+    "id": "consult-free",
+    "group": "consultation",
+    "rule": "Packet, Expected outputs: the consultation answer says it is free and includes the Consultation link. Source, OPERATIONAL KNOWLEDGE 8: it is a phone call; a URL goes on the last line.",
+    "text": "Is the consultation free?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "free",
+          "no cost",
+          "no charge"
+        ],
+        "phone"
+      ],
+      "lastLineUrl": "https://www.doctours.com/consultation"
+    }
+  },
+  {
     "id": "consult-video",
     "group": "consultation",
     "rule": "Source, OPERATIONAL KNOWLEDGE 8: the Consultation is a phone call, never a video call or join link.",
