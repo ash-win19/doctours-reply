@@ -3,3 +3,6 @@ dist/
 traces/
 .env
 .DS_Store
+evals/results/*
+# The baseline the README cites.
+!evals/results/2026-10-02T00-31-24.474Z.json

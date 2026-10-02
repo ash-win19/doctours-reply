@@ -4,11 +4,11 @@ Writes the Coordinator's Reply to a Patient's text message, or escalates to an O
 
 ## Run it
 
-You need Node 22 or newer and a free Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey). Replies come from `gemini-3.5-flash-lite`. On the free tier, Google may use prompts and responses to improve its products.
+You need Node 22 or newer and an [OpenAI API key](https://platform.openai.com/api-keys). Replies come from `gpt-6.1-sol` through the Responses API.
 
 ```sh
 npm install
-export GEMINI_API_KEY=...
+export OPENAI_API_KEY=...
 npm run respond -- --mode baseline messages.json > replies.json
 ```
 
@@ -16,17 +16,11 @@ npm run respond -- --mode baseline messages.json > replies.json
 - Output is a JSON array of `Reply` objects, one per message, in input order. It goes to stdout, or to `--out <file>`.
 - stdout holds only that JSON array. Progress and errors go to stderr.
 - Up to 4 messages run at once.
-- Each message writes a trace to `traces/<runId>/<messageId>.json`. A trace holds the input, the filled prompts, every tool call and result, the final model output, and tokens (including cached and thinking tokens) and latency for each model call.
+- Each message writes a trace to `traces/<runId>/<messageId>.json`. A trace holds the input, the filled prompts, every tool call and result, the final model output, and tokens (including cached and reasoning tokens) and latency for each model call.
 
-The free tier has a low per-model request limit (5 per minute for Flash when this was written), and Gemini counts the baseline prompt at about 40k tokens per request. So the runner paces requests:
+Rate limits (429) and server errors are retried by the OpenAI SDK with backoff, honoring `retry-after`, up to 6 times. An account that is out of credit (`insufficient_quota`) stops the run instead of retrying.
 
-- `REQUESTS_PER_MINUTE` (default 5) caps how many model requests start in any rolling minute, across all 4 concurrent messages. Retries count against it too. Raise it if your AI Studio rate-limit page shows a higher limit.
-- A rate limit (429) is retried after the delay Gemini asks for. An overload (503 "high demand") backs off exponentially, up to a minute between tries, for 8 attempts in total.
-- If the free daily quota is used up, the run stops instead of retrying.
-
-Expect the five packet messages to take a few minutes.
-
-`RESPONDER_MODEL` sets the Gemini model and defaults to `gemini-3.5-flash-lite`, a free model that tends to see less demand than the newest Flash. Set it to `gemini-3.8-flash` for stronger replies if your quota allows. `TRIAGE_MODEL` defaults to `gemini-3.5-flash-lite` and is unused until a mode with triage lands.
+`RESPONDER_MODEL` sets the OpenAI model and defaults to `gpt-6.1-sol`. Use `gpt-6-astra` for the strongest replies or `gpt-6-luna` for the cheapest. `TRIAGE_MODEL` defaults to `gpt-6-luna` and is unused until a mode with triage lands.
 
 The run ID is the run's start time as an ISO timestamp, with `:` swapped for `-` so it works as a directory name.
 
@@ -38,14 +32,58 @@ If a message can't be drafted, its Reply escalates ("I can't answer this one mys
 
 - `prompts/baseline/` holds the original system prompt and user message template. Each `{{NAME}}` takes the constant of the same name from `src/context.ts`. Strings go in as they are, and anything else is JSON-stringified.
 - `src/packet-tools.ts` and `src/context.ts` are the packet's code and constants, unchanged. `src/tools.ts` exposes each function under the name the prompt uses, such as `getClinicPackagesTool`.
-- The model finishes by calling `submitReply`, whose parameters schema is the `Reply` type. Every model call uses function-calling mode `ANY`, so it must call a function. After 8 tool rounds the next call is limited to `submitReply`. Each model turn goes back unchanged so Gemini's thought signatures carry over. `templateId` is always set to null.
+- The model finishes by calling `submitReply`, whose parameters schema is the `Reply` type. Every model call uses `tool_choice: "required"`, so it must call a function. After 8 tool rounds the next call is forced to `submitReply`. Each response's output goes back whole, so reasoning items stay with the calls they led to. `templateId` is always set to null.
 
 ## Check it
 
 ```sh
 npm test            # unit tests, no API key needed
 npm run typecheck
-npm run eval        # runs the packet's five messages through the real model
+npm run eval        # runs every eval case through the real model
 ```
 
-`npm run eval` checks that the five packet messages produce five schema-valid Replies with the expected `escalate` values. A message the model never finished counts as a failure, even though its fallback Reply escalates. The expected values stay in `fixtures/` and never reach the model.
+### Evals
+
+`npm run eval -- --mode <mode>` runs the cases in `evals/cases/` through the same runner the CLI uses, scores each Reply, and prints a scorecard to stderr: pass or fail per case with the failing check, the pass rate per group, total input and output tokens, and the median latency per message. Output tokens include reasoning tokens. A message the model never finished fails as `drafted`, even if its fallback Reply happens to match.
+
+- `--cases <name>` runs one case file, such as `--cases packet-check`. Repeat it for more.
+- Every run saves its scorecard to `evals/results/<runId>.json`, with the same run ID as its traces.
+- `npm run eval -- --compare <runA> <runB>` prints the two runs side by side, plus the cases that were fixed or broke. A run is named by its run ID or by a results file path.
+
+A case is one Patient message plus deterministic checks:
+
+```json
+{
+  "id": "consultation",
+  "group": "consultation",
+  "rule": "Packet, Expected outputs: consultation must say it is free and include the consultation URL.",
+  "text": "Is the consultation free?",
+  "expect": { "escalate": false, "includes": ["free"], "lastLineUrl": "https://www.doctours.com/consultation" }
+}
+```
+
+`group` is the skill the case exercises, or `escalation`. `rule` cites the source rule it tests. The checks are `escalate` (exact match), `includes` and `excludes` (substrings, ignoring case; an `includes` entry can be a list of alternatives, any one of which is enough), `lastLineUrl` (the Reply's last line is exactly that URL), `noUrl`, `maxSentences` (split on `.`, `?` and `!` after removing URLs) and `maxAttachments`. Numbers match however they're written, as whole numbers: `"$3,000"` matches "3000 USD" but `"$500"` doesn't match inside "$4,500". Every case also checks that the Reply matches the schema with a null `templateId`. An unknown check name is rejected, so a typo can't pass silently.
+
+`evals/cases/packet-check.json` holds the packet's five messages and only the checks the packet says must match. Nothing outside the eval harness reads it. A unit test fails if any source file or prompt mentions it.
+
+Result files stay out of git, except the baseline below.
+
+### Baseline
+
+`evals/results/2026-10-02T00-31-24.474Z.json` is the first "before": baseline mode on packet-check with `gpt-6.1-sol`. Later changes are compared against it with `npm run eval -- --compare 2026-10-02T00-31-24.474Z <newRunId>`.
+
+| Group | Passed |
+|---|---|
+| clinic-packages | 1/2 (50%) |
+| consultation | 0/1 (0%) |
+| escalation | 1/2 (50%) |
+| **Total** | **2/5 (40%)** |
+
+Input tokens 536,458 (about 98% served from OpenAI's prompt cache), output tokens 1,599, median latency 14.0s per message. Every message re-sends the ~38k-token original prompt on each of its 1 to 4 model calls.
+
+What the original prompt gets wrong:
+
+- `charge-card` doesn't escalate. It declines the charge, tells the Patient to pay from the assessment, and quotes the deposit's refund terms.
+- `heva-packages` leaves out both deposits and doesn't end on the assessment link.
+- `consultation` says it's free but leaves out the consultation link.
+- `demand-human` sets `escalate` but its sentence ("I understand, Jordan. I'm sorry for the frustration.") never says a person is coming. No packet-check rule covers the sentence, so it passes.

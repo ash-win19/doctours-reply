@@ -1,37 +1,57 @@
-import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { parseMessages } from "./cli.ts";
+import { pathToFileURL } from "node:url";
+import { loadCases } from "./eval/cases.ts";
+import { loadScorecard, saveScorecard } from "./eval/results.ts";
+import { buildScorecard, compareScorecards, formatScorecard } from "./eval/scorecard.ts";
 import { defaultRunnerDeps, log } from "./deps.ts";
-import { ReplySchema } from "./reply.ts";
-import { isDraftingFailure, parseMode, runMessages } from "./runner.ts";
+import { parseMode, runMessages, type Mode } from "./runner.ts";
 
-// Runs the packet's five messages and checks the output contract plus each expected escalate value.
-// The expectations stay here and never reach the model.
-const { values } = parseArgs({ options: { mode: { type: "string", default: "baseline" } } });
-const mode = parseMode(values.mode);
+export type EvalArgs =
+  | { kind: "run"; mode: Mode; caseFiles: string[] }
+  | { kind: "compare"; before: string; after: string };
 
-const messages = parseMessages(readFileSync("fixtures/packet-messages.json", "utf8"));
-const expectedEscalate: Record<string, boolean> = JSON.parse(
-  readFileSync("fixtures/packet-expected-escalate.json", "utf8"),
-);
-
-const replies = await runMessages(messages, mode, defaultRunnerDeps());
-const failures: string[] = [];
-if (replies.length !== messages.length) {
-  failures.push(`expected ${messages.length} replies, got ${replies.length}`);
-}
-messages.forEach((message, index) => {
-  const reply = replies[index];
-  const parsed = ReplySchema.safeParse(reply);
-  if (!parsed.success) failures.push(`${message.id}: Reply does not match the schema`);
-  if (reply?.templateId !== null) failures.push(`${message.id}: templateId is not null`);
-  if (reply && isDraftingFailure(reply)) {
-    failures.push(`${message.id}: the model never finished a Reply (see its trace)`);
-  } else if (reply?.escalate !== expectedEscalate[message.id]) {
-    failures.push(`${message.id}: escalate is ${reply?.escalate}, expected ${expectedEscalate[message.id]}`);
+export function parseEvalArgs(argv: string[]): EvalArgs {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: {
+      mode: { type: "string", default: "baseline" },
+      cases: { type: "string", multiple: true, default: [] },
+      compare: { type: "boolean", default: false },
+    },
+    allowPositionals: true,
+  });
+  if (values.compare) {
+    if (positionals.length !== 2) throw new Error("--compare takes two runs: --compare <runA> <runB>");
+    return { kind: "compare", before: positionals[0], after: positionals[1] };
   }
-  log(`${message.id}: ${JSON.stringify(reply?.response)}`);
-});
+  if (positionals.length > 0) throw new Error(`Unexpected argument: ${positionals[0]}`);
+  return { kind: "run", mode: parseMode(values.mode), caseFiles: values.cases };
+}
 
-log(failures.length ? `FAIL\n${failures.join("\n")}` : `PASS: ${messages.length} schema-valid replies`);
-process.exitCode = failures.length ? 1 : 0;
+// Runs eval cases through the same runner the CLI uses, prints a scorecard and saves it for comparison.
+// Expectations stay in the case files and never reach the model.
+async function main(): Promise<void> {
+  const args = parseEvalArgs(process.argv.slice(2));
+  if (args.kind === "compare") {
+    log(compareScorecards(loadScorecard(args.before), loadScorecard(args.after)));
+    return;
+  }
+  const cases = loadCases(args.caseFiles);
+  const deps = defaultRunnerDeps();
+  const run = await runMessages(
+    cases.map(({ id, text }) => ({ id, text })),
+    args.mode,
+    deps,
+  );
+  const card = buildScorecard({ cases, run, mode: args.mode, model: deps.responderModel });
+  log(`\n${formatScorecard(card)}`);
+  log(`\nSaved results to ${saveScorecard(card)}`);
+  process.exitCode = card.totals.passed === card.totals.cases ? 0 : 1;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    log(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

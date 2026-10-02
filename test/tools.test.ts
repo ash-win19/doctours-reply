@@ -24,9 +24,10 @@ test("exposes the 14 packet functions under the prompt's names", () => {
   );
 });
 
-test("every tool has an object JSON Schema for its parameters", () => {
+test("every tool is a function with an object JSON Schema for its parameters", () => {
   for (const tool of TOOLS) {
-    assert.equal((tool.parametersJsonSchema as { type: string }).type, "object", tool.name);
+    assert.equal(tool.type, "function", tool.name);
+    assert.equal((tool.parameters as { type: string }).type, "object", tool.name);
   }
 });
 

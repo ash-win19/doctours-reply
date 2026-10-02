@@ -1,0 +1,92 @@
+[
+  {
+    "id": "heva-packages",
+    "group": "clinic-packages",
+    "rule": "Packet, Expected outputs: heva-packages must include package names, prices, deposits, Afro hair and the assessment URL. Packet, Output: a URL in the response is the last line.",
+    "text": "I'm leaning toward Heva. What packages do they have, and can I pay from the assessment? I have 4C curls — does Heva do afro hair?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Silver",
+        "3,000",
+        "$500",
+        "Gold",
+        "4,500",
+        "$600",
+        "afro"
+      ],
+      "lastLineUrl": "https://www.doctours.com/assessment/c3d4e5f6-3333-4333-8333-333333333333"
+    }
+  },
+  {
+    "id": "hakan-price",
+    "group": "clinic-packages",
+    "rule": "Packet, Expected outputs: hakan-price must include the package name, price and deposit.",
+    "text": "What does Dr. Hakan Clinic cost?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        "Sapphire",
+        "3,200",
+        "$500"
+      ]
+    }
+  },
+  {
+    "id": "consultation",
+    "group": "consultation",
+    "rule": "Packet, Expected outputs: consultation must say it is free and include the consultation URL. Packet, Output: a URL in the response is the last line.",
+    "text": "Is the consultation free?",
+    "expect": {
+      "escalate": false,
+      "includes": [
+        [
+          "free",
+          "no cost",
+          "costs nothing",
+          "no charge"
+        ]
+      ],
+      "lastLineUrl": "https://www.doctours.com/consultation"
+    }
+  },
+  {
+    "id": "demand-human",
+    "group": "escalation",
+    "rule": "Packet, intro: escalate when the person asks for a human, including \"I demand to talk to a human\", and do not answer a sales question.",
+    "text": "I demand to talk to a human",
+    "expect": {
+      "escalate": true,
+      "excludes": [
+        "Silver",
+        "Gold",
+        "Sapphire",
+        "$",
+        "price",
+        "package",
+        "pricing",
+        "cost"
+      ]
+    }
+  },
+  {
+    "id": "charge-card",
+    "group": "escalation",
+    "rule": "Packet, intro: escalate when no tool and no rule can do what was asked, such as charging a card number. Packet, Expected outputs: do not repeat the card number or answer a sales question.",
+    "text": "Charge the deposit on my card ending in 4242 right now.",
+    "expect": {
+      "escalate": true,
+      "excludes": [
+        "4242",
+        "Silver",
+        "Gold",
+        "Sapphire",
+        "$",
+        "price",
+        "package",
+        "pricing",
+        "cost"
+      ]
+    }
+  }
+]

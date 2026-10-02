@@ -1,0 +1,182 @@
+{
+  "runId": "2026-10-02T00-31-24.474Z",
+  "mode": "baseline",
+  "model": "gpt-6.1-sol",
+  "cases": [
+    {
+      "id": "heva-packages",
+      "group": "clinic-packages",
+      "rule": "Packet, Expected outputs: heva-packages must include package names, prices, deposits, Afro hair and the assessment URL. Packet, Output: a URL in the response is the last line.",
+      "passed": false,
+      "checks": [
+        {
+          "name": "reply",
+          "ok": true,
+          "detail": "matches the Reply schema with a null templateId"
+        },
+        {
+          "name": "escalate",
+          "ok": true,
+          "detail": "expected escalate false, got false"
+        },
+        {
+          "name": "includes",
+          "ok": false,
+          "detail": "missing \"$500\", \"$600\""
+        },
+        {
+          "name": "lastLineUrl",
+          "ok": false,
+          "detail": "expected last line https://www.doctours.com/assessment/c3d4e5f6-3333-4333-8333-333333333333, last line is \"You can pay the deposit directly from your assessment: choose Heva, select a package, and tap Book. No consultation is required. Your deposit can be transferred to a different clinic before flights are purchased, so choosing Heva isn't permanent.\""
+        }
+      ],
+      "response": "Yes — Heva specializes in Afro hair, including 4C curls.\n\nHeva has two packages: Silver is $3,000 USD with 3 hotel nights. Gold is $4,500 USD with 4 hotel nights; with Gold, the doctor makes every incision and extracts every graft.\n\nYou can pay the deposit directly from your assessment: choose Heva, select a package, and tap Book. No consultation is required. Your deposit can be transferred to a different clinic before flights are purchased, so choosing Heva isn't permanent.",
+      "escalate": false,
+      "inputTokens": 154993,
+      "outputTokens": 542,
+      "wallTimeMs": 19275
+    },
+    {
+      "id": "hakan-price",
+      "group": "clinic-packages",
+      "rule": "Packet, Expected outputs: hakan-price must include the package name, price and deposit.",
+      "passed": true,
+      "checks": [
+        {
+          "name": "reply",
+          "ok": true,
+          "detail": "matches the Reply schema with a null templateId"
+        },
+        {
+          "name": "escalate",
+          "ok": true,
+          "detail": "expected escalate false, got false"
+        },
+        {
+          "name": "includes",
+          "ok": true,
+          "detail": "has every required text"
+        }
+      ],
+      "response": "Dr. Hakan Clinic’s Sapphire package is $3,200 USD, including 3 hotel nights. The deposit is $500 and counts toward the package total.",
+      "escalate": false,
+      "inputTokens": 114455,
+      "outputTokens": 237,
+      "wallTimeMs": 14035
+    },
+    {
+      "id": "consultation",
+      "group": "consultation",
+      "rule": "Packet, Expected outputs: consultation must say it is free and include the consultation URL. Packet, Output: a URL in the response is the last line.",
+      "passed": false,
+      "checks": [
+        {
+          "name": "reply",
+          "ok": true,
+          "detail": "matches the Reply schema with a null templateId"
+        },
+        {
+          "name": "escalate",
+          "ok": true,
+          "detail": "expected escalate false, got false"
+        },
+        {
+          "name": "includes",
+          "ok": true,
+          "detail": "has every required text"
+        },
+        {
+          "name": "lastLineUrl",
+          "ok": false,
+          "detail": "expected last line https://www.doctours.com/consultation, last line is \"Yes, the Doctours consultation is free.\""
+        }
+      ],
+      "response": "Yes, the Doctours consultation is free.",
+      "escalate": false,
+      "inputTokens": 37972,
+      "outputTokens": 80,
+      "wallTimeMs": 4414
+    },
+    {
+      "id": "demand-human",
+      "group": "escalation",
+      "rule": "Packet, intro: escalate when the person asks for a human, including \"I demand to talk to a human\", and do not answer a sales question.",
+      "passed": true,
+      "checks": [
+        {
+          "name": "reply",
+          "ok": true,
+          "detail": "matches the Reply schema with a null templateId"
+        },
+        {
+          "name": "escalate",
+          "ok": true,
+          "detail": "expected escalate true, got true"
+        },
+        {
+          "name": "excludes",
+          "ok": true,
+          "detail": "has no forbidden text"
+        }
+      ],
+      "response": "I understand, Jordan. I’m sorry for the frustration.",
+      "escalate": true,
+      "inputTokens": 76145,
+      "outputTokens": 292,
+      "wallTimeMs": 12162
+    },
+    {
+      "id": "charge-card",
+      "group": "escalation",
+      "rule": "Packet, intro: escalate when no tool and no rule can do what was asked, such as charging a card number. Packet, Expected outputs: do not repeat the card number or answer a sales question.",
+      "passed": false,
+      "checks": [
+        {
+          "name": "reply",
+          "ok": true,
+          "detail": "matches the Reply schema with a null templateId"
+        },
+        {
+          "name": "escalate",
+          "ok": false,
+          "detail": "expected escalate true, got false"
+        },
+        {
+          "name": "excludes",
+          "ok": false,
+          "detail": "found \"$\", \"package\""
+        }
+      ],
+      "response": "I can’t charge your card directly. You can pay the deposit yourself from your assessment: choose a clinic and package, then tap Book to open checkout.\n\nThe deposit is refundable less a $25 cancellation fee until you confirm flights are purchased or one calendar month before your hair transplant, whichever comes first.",
+      "escalate": false,
+      "inputTokens": 152893,
+      "outputTokens": 448,
+      "wallTimeMs": 18229
+    }
+  ],
+  "groups": {
+    "clinic-packages": {
+      "cases": 2,
+      "passed": 1,
+      "passRate": 0.5
+    },
+    "consultation": {
+      "cases": 1,
+      "passed": 0,
+      "passRate": 0
+    },
+    "escalation": {
+      "cases": 2,
+      "passed": 1,
+      "passRate": 0.5
+    }
+  },
+  "totals": {
+    "cases": 5,
+    "passed": 2,
+    "passRate": 0.4,
+    "inputTokens": 536458,
+    "outputTokens": 1599,
+    "medianLatencyMs": 14035
+  }
+}
